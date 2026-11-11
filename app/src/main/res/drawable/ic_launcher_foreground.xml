@@ -1,23 +1,39 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Rupee glyph inside the adaptive-icon safe zone. The 108dp canvas has an outer
-  18dp margin reserved for masking, so artwork stays within the middle 72dp.
+  App icon: receipt with three lines (from the owner's app-icon.svg, 1024x1024).
+  Adaptive icons draw on a 108dp canvas but only the middle 72dp is ever visible,
+  so the viewport is 1536 (= 1024 * 108/72) and the artwork is shifted by 256:
+  the SVG's full square lands exactly on the visible area, keeping its proportions
+  and the receipt inside the 66dp safe circle on every launcher mask.
+  Background colour is ic_launcher_background (the SVG's #0F5C4D).
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
+    android:viewportWidth="1536"
+    android:viewportHeight="1536">
 
-    <group android:translateX="30" android:translateY="28">
+    <group android:translateX="256" android:translateY="256">
         <path
             android:fillColor="#FFFFFF"
-            android:pathData="M4,2 h40 a4,4 0 0 1 0,8 h-40 a4,4 0 0 1 0,-8 z" />
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="16"
+            android:strokeLineJoin="round"
+            android:pathData="M252,216 Q252,180 288,180 H736 Q772,180 772,216 V792 L728.67,836 L685.33,792 L642,836 L598.67,792 L555.33,836 L512,792 L468.67,836 L425.33,792 L382,836 L338.67,792 L295.33,836 L252,792 Z" />
         <path
-            android:fillColor="#FFFFFF"
-            android:pathData="M4,16 h40 a4,4 0 0 1 0,8 h-40 a4,4 0 0 1 0,-8 z" />
+            android:strokeColor="#0F5C4D"
+            android:strokeWidth="56"
+            android:strokeLineCap="round"
+            android:pathData="M340,330 L684,330" />
         <path
-            android:fillColor="#FFFFFF"
-            android:pathData="M10,6 h12 a16,16 0 0 1 0,32 h-14 l26,24 h-12 l-26,-26 v-6 h26 a8,8 0 0 0 0,-16 h-12 z" />
+            android:strokeColor="#0F5C4D"
+            android:strokeWidth="56"
+            android:strokeLineCap="round"
+            android:pathData="M340,460 L584,460" />
+        <path
+            android:strokeColor="#F2A93B"
+            android:strokeWidth="56"
+            android:strokeLineCap="round"
+            android:pathData="M340,590 L484,590" />
     </group>
 </vector>

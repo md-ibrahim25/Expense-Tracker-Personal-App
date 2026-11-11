@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Single-colour layer for Android 13+ themed icons. The system tints everything
+  drawn here one colour, so the three lines are cut out of the receipt (evenOdd
+  fill with pill-shaped sub-paths) instead of being drawn on top, where they'd
+  vanish. Same geometry and 1536 viewport as ic_launcher_foreground.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="1536"
+    android:viewportHeight="1536">
+
+    <group android:translateX="256" android:translateY="256">
+        <!-- Outline stroke on its own path so it doesn't also stroke the holes. -->
+        <path
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="16"
+            android:strokeLineJoin="round"
+            android:pathData="M252,216 Q252,180 288,180 H736 Q772,180 772,216 V792 L728.67,836 L685.33,792 L642,836 L598.67,792 L555.33,836 L512,792 L468.67,836 L425.33,792 L382,836 L338.67,792 L295.33,836 L252,792 Z" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:fillType="evenOdd"
+            android:pathData="M252,216 Q252,180 288,180 H736 Q772,180 772,216 V792 L728.67,836 L685.33,792 L642,836 L598.67,792 L555.33,836 L512,792 L468.67,836 L425.33,792 L382,836 L338.67,792 L295.33,836 L252,792 Z
+                M340,302 H684 A28,28 0 0 1 684,358 H340 A28,28 0 0 1 340,302 Z
+                M340,432 H584 A28,28 0 0 1 584,488 H340 A28,28 0 0 1 340,432 Z
+                M340,562 H484 A28,28 0 0 1 484,618 H340 A28,28 0 0 1 340,562 Z" />
+    </group>
+</vector>
