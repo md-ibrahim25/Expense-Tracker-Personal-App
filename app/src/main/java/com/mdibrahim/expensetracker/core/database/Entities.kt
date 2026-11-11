@@ -76,4 +76,14 @@ data class TransactionEntity(
     // Added in schema v2. The default lets the auto-migration backfill old rows.
     @ColumnInfo(defaultValue = "MANUAL") val source: String = "MANUAL",
     val externalId: String? = null,
+    // Added in schema v3.
+    val counterparty: String? = null,
+    val balanceAfterMinor: Long? = null,
+)
+
+/** Projection for [TransactionDao.observeLatestBalances]. */
+data class BalanceRow(
+    val accountId: Long,
+    val balanceAfterMinor: Long,
+    val occurredAtEpochMillis: Long,
 )

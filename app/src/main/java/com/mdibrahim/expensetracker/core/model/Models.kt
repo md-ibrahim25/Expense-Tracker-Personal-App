@@ -43,11 +43,26 @@ data class Transaction(
     val occurredAt: Instant,
     val accountId: Long,
     val categoryId: Long? = null,
+    /** What it was for, written by the user. */
     val note: String? = null,
+    /** Who was paid or who paid, as reported by the bank SMS. */
+    val counterparty: String? = null,
+    /** Account balance right after this transaction, if the bank reported it. Paise. */
+    val balanceAfterMinor: Long? = null,
     val source: TransactionSource = TransactionSource.MANUAL,
     /**
      * Stable identity of the thing this was captured from (e.g. a hash of the SMS
      * body). Unique when non-null, so re-importing the same SMS is a no-op.
      */
     val externalId: String? = null,
+) {
+    /** Not yet given a category -- what the daily review works through. */
+    val needsReview: Boolean get() = categoryId == null
+}
+
+/** The bank-reported balance of an account, from its most recent SMS. */
+data class AccountBalance(
+    val accountId: Long,
+    val balanceMinor: Long,
+    val asOf: Instant,
 )

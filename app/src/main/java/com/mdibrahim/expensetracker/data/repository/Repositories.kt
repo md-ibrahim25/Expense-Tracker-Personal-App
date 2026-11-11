@@ -1,6 +1,7 @@
 package com.mdibrahim.expensetracker.data.repository
 
 import com.mdibrahim.expensetracker.core.model.Account
+import com.mdibrahim.expensetracker.core.model.AccountBalance
 import com.mdibrahim.expensetracker.core.model.AccountType
 import com.mdibrahim.expensetracker.core.model.Category
 import com.mdibrahim.expensetracker.core.model.Transaction
@@ -35,6 +36,15 @@ interface TransactionRepository {
     fun observeTransactions(): Flow<List<Transaction>>
     fun observeTransactionsBetween(fromEpochMillis: Long, toEpochMillis: Long): Flow<List<Transaction>>
     suspend fun get(id: Long): Transaction?
+
+    /** Latest bank-reported balance per account (accounts with no reported balance are absent). */
+    fun observeLatestBalances(): Flow<List<AccountBalance>>
+
+    /**
+     * Next uncategorised transaction in [fromEpochMillis, toEpochMillis) after [after]
+     * in date order, or the first one in the range when [after] is null.
+     */
+    suspend fun nextNeedingReview(fromEpochMillis: Long, toEpochMillis: Long, after: Transaction?): Long?
     suspend fun add(transaction: Transaction): Long
 
     /**

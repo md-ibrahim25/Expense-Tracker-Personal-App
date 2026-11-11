@@ -59,6 +59,7 @@ private val DATE_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("EEE, d
 @Composable
 fun EditTransactionScreen(
     onDone: () -> Unit,
+    onNextReview: (Long) -> Unit,
     viewModel: EditTransactionViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -66,11 +67,20 @@ fun EditTransactionScreen(
     var showDeleteConfirm by remember { mutableStateOf(false) }
 
     LaunchedEffect(state.isDone) { if (state.isDone) onDone() }
+    LaunchedEffect(state.nextReviewId) { state.nextReviewId?.let(onNextReview) }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (state.isNew) "Add transaction" else "Edit transaction") },
+                title = {
+                    Text(
+                        when {
+                            state.reviewMode -> "Review"
+                            state.isNew -> "Add transaction"
+                            else -> "Edit transaction"
+                        },
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onDone) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -102,11 +112,17 @@ fun EditTransactionScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             if (state.source == TransactionSource.SMS) {
-                Text(
-                    text = "Captured from a bank SMS",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Column {
+                    state.counterparty?.let {
+                        val prefix = if (state.direction == TransactionDirection.DEBIT) "Paid to" else "Received from"
+                        Text("$prefix $it", style = MaterialTheme.typography.titleMedium)
+                    }
+                    Text(
+                        text = "From a bank SMS",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
 
             OutlinedTextField(
@@ -136,6 +152,32 @@ fun EditTransactionScreen(
                 )
             }
 
+            Section("Category") {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(state.categories, key = { it.id }) { category ->
+                        FilterChip(
+                            selected = state.categoryId == category.id,
+                            onClick = { viewModel.onCategoryChange(category.id) },
+                            label = { Text(category.name) },
+                        )
+                    }
+                }
+            }
+
+            OutlinedTextField(
+                value = state.note,
+                onValueChange = viewModel::onNoteChange,
+                label = { Text("What was it for?") },
+                placeholder = { Text("e.g. groceries for the week") },
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            Section("Date") {
+                OutlinedButton(onClick = { showDatePicker = true }) {
+                    Text(state.dateTime.toLocalDate().format(DATE_FORMAT))
+                }
+            }
+
             Section("Account") {
                 if (state.accounts.isEmpty()) {
                     Text(
@@ -156,34 +198,20 @@ fun EditTransactionScreen(
                 }
             }
 
-            Section("Category") {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(state.categories, key = { it.id }) { category ->
-                        FilterChip(
-                            selected = state.categoryId == category.id,
-                            onClick = { viewModel.onCategoryChange(category.id) },
-                            label = { Text(category.name) },
-                        )
+            Spacer(Modifier.height(8.dp))
+            if (state.reviewMode) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = viewModel::skip, modifier = Modifier.weight(1f)) {
+                        Text("Skip")
+                    }
+                    Button(onClick = viewModel::save, modifier = Modifier.weight(1f)) {
+                        Text("Save & next")
                     }
                 }
-            }
-
-            Section("Date") {
-                OutlinedButton(onClick = { showDatePicker = true }) {
-                    Text(state.dateTime.toLocalDate().format(DATE_FORMAT))
+            } else {
+                Button(onClick = viewModel::save, modifier = Modifier.fillMaxWidth()) {
+                    Text("Save")
                 }
-            }
-
-            OutlinedTextField(
-                value = state.note,
-                onValueChange = viewModel::onNoteChange,
-                label = { Text("Note (optional)") },
-                modifier = Modifier.fillMaxWidth(),
-            )
-
-            Spacer(Modifier.height(8.dp))
-            Button(onClick = viewModel::save, modifier = Modifier.fillMaxWidth()) {
-                Text("Save")
             }
         }
     }

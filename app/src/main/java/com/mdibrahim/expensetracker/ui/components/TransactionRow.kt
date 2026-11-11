@@ -10,7 +10,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import com.mdibrahim.expensetracker.core.model.Account
 import com.mdibrahim.expensetracker.core.model.Category
@@ -55,12 +59,27 @@ fun TransactionRow(
     val moneyColors = LocalMoneyColors.current
     val isDebit = transaction.direction == TransactionDirection.DEBIT
 
-    val details = listOfNotNull(
-        transaction.occurredAt.atZone(ZoneId.systemDefault()).format(DATE_FORMAT),
-        item.categoryName ?: "Uncategorised",
-        item.accountName,
-        "SMS".takeIf { transaction.source == TransactionSource.SMS },
-    ).joinToString(" · ")
+    // Title: what it was for if the user said, else who it was paid to/from.
+    val title = transaction.note?.takeIf { it.isNotBlank() }
+        ?: transaction.counterparty
+        ?: "Untitled"
+    val details = buildAnnotatedString {
+        append(transaction.occurredAt.atZone(ZoneId.systemDefault()).format(DATE_FORMAT))
+        append(" · ")
+        if (item.categoryName != null) {
+            append(item.categoryName)
+        } else {
+            // Text, not just colour, marks it -- readable without colour vision.
+            withStyle(SpanStyle(color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Medium)) {
+                append("Needs category")
+            }
+        }
+        // When the title is the user's note, still show who was paid.
+        if (transaction.note?.isNotBlank() == true && transaction.counterparty != null) {
+            append(" · ${transaction.counterparty}")
+        }
+        if (transaction.source == TransactionSource.SMS) append(" · SMS")
+    }
 
     Row(
         modifier = modifier
@@ -71,7 +90,7 @@ fun TransactionRow(
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = transaction.note?.takeIf { it.isNotBlank() } ?: "Untitled",
+                text = title,
                 style = MaterialTheme.typography.bodyLarge,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

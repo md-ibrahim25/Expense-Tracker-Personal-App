@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A personal (single-user, sideloaded) Android expense tracker: Kotlin + Jetpack Compose + Room, local-only storage. Built for the repo owner's own use, not for Play Store distribution.
+A personal (single-user, sideloaded) Android **monthly money tracker**: Kotlin + Jetpack Compose + Room, local-only storage with Google Drive backup. Built for the repo owner's own use, not for Play Store distribution.
+
+**The owner's workflow drives the design:** Canara Bank SMS are recorded automatically with only the bank's facts (amount, direction, payee, balance). The owner opens the app daily and reviews the new ones, adding a **category** and **what it was for**. The app's job is to show, per month, how much was spent and received, and the account's current balance.
 
 The project is split into two phases. **Phase 1 (done): foundations** — a runnable, themed, navigable app shell with a real database underneath. **Phase 2 (in progress): features**, built one milestone at a time; each milestone builds, passes tests and is committed before the next. Don't build Phase 2 items beyond the current milestone unless asked.
 
@@ -12,7 +14,7 @@ The project is split into two phases. **Phase 1 (done): foundations** — a runn
 
 Builds, `testDebugUnitTest` passes (16 `MoneyTest` + 9 `CanaraSmsParserTest` + 7 `BackupFilesTest`), and `lintDebug` has 0 errors. Build failures are regressions.
 
-**Nothing has been run on a phone yet** — all on-device steps in the verification list at the bottom are unverified.
+**On-device so far** (owner's phone: vivo V2158, Android 14, adb serial `10BD1P092J0015L`): the app installs and launches without crashing, and an existing v2 database migrated to v3 (header `user_version` read back as 3). Everything else in the on-device list at the bottom is unverified; the owner plans to test it all at the end. The USB connection to this phone drops occasionally: if `installDebug` fails with "Unable to open sync connection", re-check `adb devices` and use `adb install -r app/build/outputs/apk/debug/app-debug.apk`.
 
 The Canara SMS parser is built against **real messages from the owner's phone** (5 transaction formats + 3 non-transaction ones, listed in the `CanaraSmsParser` KDoc). Test bodies keep the real wording but have names, UPI refs and account digits replaced — **never commit real SMS text**, since the repo is on GitHub. When a real SMS parses wrongly, add it (anonymised) to the test first.
 
@@ -67,7 +69,12 @@ Dependencies point strictly inward: `ui` → `data/repository` (interfaces) → 
 - **`data/sms`** — bank SMS capture. `CanaraSmsParser` (pure Kotlin, JVM-tested) → `SmsImporter` (maps to a `Transaction`, one app account per `Canara Bank ••<last digits>`, and back-fills from the inbox) → `SmsReceiver` (manifest `BroadcastReceiver` for live SMS). The receiver gets its dependencies through a Hilt `@EntryPoint`, not `@AndroidEntryPoint`: with the Hilt Gradle plugin an `@AndroidEntryPoint` receiver must call `super.onReceive()`, which Kotlin rejects because it's abstract.
 - **`data/backup`** — Google Drive backup. `DriveAuthorizer` (Play services `AuthorizationClient`, scope `drive.file` only) → `BackupManager` (orchestrates) → `DriveClient` (five Drive v3 REST calls over `HttpURLConnection`, no Google API client lib) + `LocalDatabaseBackup` (snapshot/validate/replace). `BackupFiles` holds the pure, JVM-tested rules (naming, pruning, multipart body). `AutoBackupWorker` is a daily WorkManager job using a Hilt `@EntryPoint` (no hilt-work). Settings/last-result live in `BackupPreferences` (SharedPreferences).
 - **`di`** — `DatabaseModule` (Room + DAO providers), `RepositoryModule` (`@Binds` interface → implementation).
-- **`ui`** — `theme/`, `navigation/`, `components/` (shared `TransactionRow`), `screens/<screen>/`. ViewModels expose immutable state via `StateFlow`; Composables take state as parameters. Screens: Home (month totals + recent), Transactions (day-grouped list, in/out filter), Edit (add/edit/delete; route `transaction/edit?id=`, `-1` = new, bottom bar hidden), Settings (SMS permission + inbox import), Reports (still a placeholder).
+- **`ui`** — `theme/`, `navigation/`, `components/` (shared `TransactionRow`, `MonthSelector`, and `SelectedMonth`, a `@Singleton` holding the month being viewed so Home and Transactions stay in sync), `screens/<screen>/`. ViewModels expose immutable state via `StateFlow`; Composables take state as parameters. Screens:
+  - **Home:** month switcher, spent/received/net for the month, current bank balance, "N to review" banner, 5 most recent.
+  - **Transactions:** month switcher, month in/out totals, filters All / Money out / Money in / To review, grouped by day.
+  - **Edit:** add/edit/delete. Route `transaction/edit?id=&review=` (`id=-1` means new). In review mode it shows "Save & next" and "Skip" and steps through the month's uncategorised transactions, each replacing the previous one in the back stack.
+  - **Settings:** SMS permission, inbox import, Drive backup.
+  - **Reports:** still a placeholder.
 
 ### Invariants — do not violate these
 
@@ -81,13 +88,19 @@ Dependencies point strictly inward: `ui` → `data/repository` (interfaces) → 
 
 **Authorisation needs UI only the first time.** `DriveAuthorizer.authorize()` returns a token silently once granted, which is what the background worker relies on; if it returns `NeedsConsent`, the worker records an error rather than prompting.
 
+**`note` is the user's, `counterparty` is the bank's.** `note` = "what was it for", written only by the user on review. `counterparty` = who was paid or who paid, and `balanceAfterMinor` = the balance the bank reported; both come from the SMS. The SMS importer leaves `note` empty. Don't put SMS text into `note` again: v3's migration (`V3MovePayeeOutOfNote`) exists to undo exactly that.
+
+**"Needs review" means `categoryId == null`** (`Transaction.needsReview`), whatever the source. The review queue (`nextNeedingReview`) is scoped to one month and walks forward in date order, so a skipped transaction isn't served again in the same pass.
+
+**Current balance = the bank's own number**, taken from the most recent transaction on that account that carried one (`observeLatestBalances`). It isn't computed by summing transactions, because the app has no opening balance and misses non-SMS movements, so a computed figure would drift. It's shown with an "as of" time.
+
 **SMS parsing is conservative.** Anything not clearly describing money that already moved (OTP, "will be debited", requests, failures) returns `null`. A missed SMS can be typed in by hand; a phantom transaction silently corrupts totals.
 
 **Enums are persisted by `name`, not ordinal** (see `Mappers.kt`), so reordering an enum can't silently reinterpret existing rows. `enumValueOrDefault` handles unknown values.
 
 **The UI never imports Room.** Screens and ViewModels depend only on the repository interfaces. This is the entire mechanism by which cloud sync can be added later — a new implementation plus a changed `@Binds` in `di/RepositoryModule.kt`, with no screen touched. Adding a Room import to `ui/` defeats it.
 
-**No `fallbackToDestructiveMigration`.** Losing real expense history to a schema change is unacceptable. Write proper migrations. `exportSchema = true` and `app/schemas/` is committed so migrations are diffable rather than guesswork. Current schema is **v2**; 1→2 (`transactions.source`, `transactions.externalId`) is an `@AutoMigration`. Purely additive changes can keep using `AutoMigration` (new NOT NULL columns need a `@ColumnInfo(defaultValue = ...)`); renames/drops need an `AutoMigrationSpec` or a manual `Migration`. Bump `version` and add the migration in `ExpenseDatabase` for every entity change.
+**No `fallbackToDestructiveMigration`.** Losing real expense history to a schema change is unacceptable. Write proper migrations. `exportSchema = true` and `app/schemas/` is committed so migrations are diffable rather than guesswork. Current schema is **v3** (`ExpenseDatabase.VERSION`). 1→2 (`source`, `externalId`) is a plain `@AutoMigration`; 2→3 (`counterparty`, `balanceAfterMinor`) is an `@AutoMigration` with an `AutoMigrationSpec` that moves SMS payees out of `note`. Purely additive changes can keep using `AutoMigration` (new NOT NULL columns need a `@ColumnInfo(defaultValue = ...)`); renames/drops need an `AutoMigrationSpec` or a manual `Migration`. Bump `version` and add the migration in `ExpenseDatabase` for every entity change.
 
 **Dates** are stored as `occurredAtEpochMillis` (`Long`) and converted to `java.time.Instant` in the mappers — there are no Room `TypeConverter`s, by choice. `minSdk = 26` means `java.time` is available natively without desugaring.
 
@@ -108,9 +121,9 @@ The repo owner is building this to learn Android development, and is cost-consci
 
 ## Phase 2 — feature milestones
 
-**Done:** manual entry (add/edit/delete), transactions list, Canara Bank SMS capture (live + inbox back-fill), Google Drive backup/restore with optional daily auto-backup.
+**Done:** manual entry (add/edit/delete), transactions list, Canara Bank SMS capture (live + inbox back-fill), Google Drive backup/restore with optional daily auto-backup, monthly view (month switcher, month totals), daily review flow, and current balance from SMS.
 
-**Owner's decisions so far:** bank is **Canara Bank only** (SMS debit/credit). Cloud sync is a **Google Drive backup file** (built). It only works once the owner has set up Google Cloud Console: Drive API enabled, OAuth consent screen with the `drive.file` scope, and an **Android** OAuth client per build — package `com.mdibrahim.expensetracker.debug` + the debug keystore SHA-1 (`keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android`), plus a separate client for the release package once a release keystore exists. No client ID goes in the code. Error code 10 (`DEVELOPER_ERROR`) in the app means the package/SHA-1 doesn't match a client. If the consent screen stays in "Testing", Google may expire the grant after 7 days and auto-backup will stop until the owner taps Back up now; `drive.file` is a non-sensitive scope, so publishing it "In production" needs no verification.
+**Owner's decisions so far:** bank is **Canara Bank only** (SMS debit/credit). Cloud sync is a **Google Drive backup file** (built). The owner reports the Google Cloud Console setup is done, but it hasn't been confirmed by a successful backup on the phone yet. What it requires: Drive API enabled, OAuth consent screen with the `drive.file` scope, and an **Android** OAuth client per build — package `com.mdibrahim.expensetracker.debug` + the debug keystore SHA-1 (`keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android`), plus a separate client for the release package once a release keystore exists. No client ID goes in the code. Error code 10 (`DEVELOPER_ERROR`) in the app means the package/SHA-1 doesn't match a client. If the consent screen stays in "Testing", Google may expire the grant after 7 days and auto-backup will stop until the owner taps Back up now; `drive.file` is a non-sensitive scope, so publishing it "In production" needs no verification.
 
 **Not started:** UPI app notification capture, budgets and overspend alerts, charts and reports (the Reports tab is still `ui/screens/placeholder/`), statement CSV/PDF import, receipt OCR, recurring-transaction detection, app lock/biometrics, home-screen widgets, export to Excel/Sheets. Also not built: managing accounts and categories in the app (they only come from the seeder and SMS import).
 
@@ -126,4 +139,7 @@ The repo owner is building this to learn Android development, and is cost-consci
 8. Receive a real Canara SMS with the app closed — it appears without opening the app.
 9. Settings → Back up now: consent screen appears the first time, then "Backed up"; the file shows in Drive under "Expense Tracker Backups". A second tap needs no consent.
 10. Add a transaction, then Restore the earlier backup: the app restarts and the new transaction is gone (and `pre-restore-backup.db` exists in the app's files dir).
+12. Month switcher: ‹ › on Home moves the month and Transactions shows the same month; › stops at the current month.
+13. After an inbox import, Home shows "N transactions to review"; Review → Save & next walks through them and returns Home at the end; the count drops. Skip moves on without saving.
+14. Home "Current balance" equals the Bal figure in the newest Canara SMS.
 11. Turn on "Back up daily". To test without waiting a day: `adb shell cmd jobscheduler run -f com.mdibrahim.expensetracker.debug <jobId>` (find the id with `adb shell dumpsys jobscheduler | grep expensetracker`), then check "Last backup" updates.

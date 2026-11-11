@@ -71,6 +71,42 @@ interface TransactionDao {
     @Query("SELECT * FROM transactions WHERE id = :id")
     suspend fun getById(id: Long): TransactionEntity?
 
+    /** Per account, the balance from its most recent transaction that reported one. */
+    @Query(
+        """
+        SELECT accountId, balanceAfterMinor, occurredAtEpochMillis FROM transactions t
+        WHERE balanceAfterMinor IS NOT NULL AND NOT EXISTS (
+            SELECT 1 FROM transactions n
+            WHERE n.accountId = t.accountId AND n.balanceAfterMinor IS NOT NULL
+              AND (n.occurredAtEpochMillis > t.occurredAtEpochMillis
+                   OR (n.occurredAtEpochMillis = t.occurredAtEpochMillis AND n.id > t.id))
+        )
+        """,
+    )
+    fun observeLatestBalances(): Flow<List<BalanceRow>>
+
+    /**
+     * Review queue: the next uncategorised transaction in [fromEpochMillis, toEpochMillis)
+     * that comes strictly after (afterEpochMillis, afterId) in date order. Walking
+     * forward means one the user skips without a category isn't served again.
+     */
+    @Query(
+        """
+        SELECT id FROM transactions
+        WHERE categoryId IS NULL
+          AND occurredAtEpochMillis >= :fromEpochMillis AND occurredAtEpochMillis < :toEpochMillis
+          AND (occurredAtEpochMillis > :afterEpochMillis
+               OR (occurredAtEpochMillis = :afterEpochMillis AND id > :afterId))
+        ORDER BY occurredAtEpochMillis ASC, id ASC LIMIT 1
+        """,
+    )
+    suspend fun nextNeedingReview(
+        fromEpochMillis: Long,
+        toEpochMillis: Long,
+        afterEpochMillis: Long,
+        afterId: Long,
+    ): Long?
+
     @Insert
     suspend fun insert(transaction: TransactionEntity): Long
 

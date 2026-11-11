@@ -9,8 +9,10 @@ data class ParsedSms(
     val direction: TransactionDirection,
     /** Last digits of the account as printed in the SMS ("1234"), if present. */
     val accountSuffix: String?,
-    /** Best-effort counterparty / description, for the transaction note. */
-    val description: String?,
+    /** Who was paid / who paid, or e.g. "ATM withdrawal". Null when the SMS doesn't say. */
+    val counterparty: String?,
+    /** Account balance after this transaction, as reported by the bank, in paise. */
+    val balanceMinor: Long?,
 )
 
 /**
@@ -61,6 +63,12 @@ object CanaraSmsParser {
     private val UPI_PARTY = Regex("""\b(?:to|from)\s+([^,;]+?)\s*[,;]\s*UPI\b""", RegexOption.IGNORE_CASE)
     private val ATM = Regex("""\bATM txn\b""", RegexOption.IGNORE_CASE)
 
+    /** "Bal INR 670.36", "Total Avail.bal INR 3,764.94", "Avl Bal Rs.INR 16,330.39". */
+    private val BALANCE = Regex(
+        """\b(?:Avail\.?\s*bal|Avl\.?\s*Bal|Bal)\b[.:]?\s*(?:Rs\.?\s*)?(?:INR\s*)?([0-9][0-9,]*(?:\.[0-9]{1,2})?)""",
+        RegexOption.IGNORE_CASE,
+    )
+
     fun isFromCanara(sender: String?, body: String): Boolean =
         (sender != null && SENDER.containsMatchIn(sender)) || SIGNATURE.containsMatchIn(body)
 
@@ -87,12 +95,13 @@ object CanaraSmsParser {
             amountMinor = amountMinor,
             direction = direction,
             accountSuffix = ACCOUNT.find(body)?.groupValues?.get(1),
-            description = describe(body, direction),
+            counterparty = counterparty(body, direction),
+            balanceMinor = BALANCE.find(body)?.groupValues?.get(1)?.let(::rupeesToMinor),
         )
     }
 
     /** Null when the SMS names no counterparty (e.g. the generic "An amount of .." alert). */
-    private fun describe(body: String, direction: TransactionDirection): String? {
+    private fun counterparty(body: String, direction: TransactionDirection): String? {
         if (direction == TransactionDirection.DEBIT && ATM.containsMatchIn(body)) return "ATM withdrawal"
         val party = UPI_PARTY.find(body)?.groupValues?.get(1) ?: return null
         // Banks pad names with double spaces ("SHIV RAJ  SINGH").

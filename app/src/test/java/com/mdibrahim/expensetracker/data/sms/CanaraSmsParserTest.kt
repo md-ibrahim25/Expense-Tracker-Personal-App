@@ -24,7 +24,8 @@ class CanaraSmsParserTest {
         assertEquals(7_500L, parsed.amountMinor)
         assertEquals(DEBIT, parsed.direction)
         assertEquals("1234", parsed.accountSuffix)
-        assertEquals("Ravi Kumar", parsed.description)
+        assertEquals("Ravi Kumar", parsed.counterparty)
+        assertEquals(67_036L, parsed.balanceMinor)
     }
 
     @Test
@@ -43,7 +44,8 @@ class CanaraSmsParserTest {
         assertEquals(CREDIT, parsed.direction)
         assertEquals("1234", parsed.accountSuffix)
         // Double space in the bank's text is collapsed.
-        assertEquals("PRIYA NAIR", parsed.description)
+        assertEquals("PRIYA NAIR", parsed.counterparty)
+        assertEquals(211_703L, parsed.balanceMinor)
     }
 
     @Test
@@ -54,7 +56,9 @@ class CanaraSmsParserTest {
         assertEquals(25_000L, parsed.amountMinor)
         assertEquals(DEBIT, parsed.direction)
         assertEquals("1234", parsed.accountSuffix)
-        assertEquals("RAJ KUMAR SINGH", parsed.description)
+        assertEquals("RAJ KUMAR SINGH", parsed.counterparty)
+        // This older format doesn't report a balance.
+        assertNull(parsed.balanceMinor)
     }
 
     @Test
@@ -66,7 +70,8 @@ class CanaraSmsParserTest {
         assertEquals(DEBIT, parsed.direction)
         assertEquals("1234", parsed.accountSuffix)
         // "to report cyber fraud" must not be read as a payee.
-        assertNull(parsed.description)
+        assertNull(parsed.counterparty)
+        assertEquals(519_561L, parsed.balanceMinor)
     }
 
     @Test
@@ -79,7 +84,8 @@ class CanaraSmsParserTest {
         assertEquals(1_000_000L, parsed.amountMinor)
         assertEquals(DEBIT, parsed.direction)
         assertEquals("1234", parsed.accountSuffix)
-        assertEquals("ATM withdrawal", parsed.description)
+        assertEquals("ATM withdrawal", parsed.counterparty)
+        assertEquals(1_633_039L, parsed.balanceMinor)
     }
 
     @Test

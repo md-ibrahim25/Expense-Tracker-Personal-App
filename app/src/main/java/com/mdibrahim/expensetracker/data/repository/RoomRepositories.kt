@@ -6,6 +6,7 @@ import com.mdibrahim.expensetracker.core.database.TransactionDao
 import com.mdibrahim.expensetracker.core.database.toDomain
 import com.mdibrahim.expensetracker.core.database.toEntity
 import com.mdibrahim.expensetracker.core.model.Account
+import com.mdibrahim.expensetracker.core.model.AccountBalance
 import com.mdibrahim.expensetracker.core.model.AccountType
 import com.mdibrahim.expensetracker.core.model.Category
 import com.mdibrahim.expensetracker.core.model.Transaction
@@ -58,6 +59,15 @@ class RoomTransactionRepository @Inject constructor(
         dao.observeInRange(fromEpochMillis, toEpochMillis).map { rows -> rows.map { it.toDomain() } }
 
     override suspend fun get(id: Long): Transaction? = dao.getById(id)?.toDomain()
+    override fun observeLatestBalances(): Flow<List<AccountBalance>> =
+        dao.observeLatestBalances().map { rows -> rows.map { it.toDomain() } }
+    override suspend fun nextNeedingReview(fromEpochMillis: Long, toEpochMillis: Long, after: Transaction?): Long? =
+        dao.nextNeedingReview(
+            fromEpochMillis = fromEpochMillis,
+            toEpochMillis = toEpochMillis,
+            afterEpochMillis = after?.occurredAt?.toEpochMilli() ?: Long.MIN_VALUE,
+            afterId = after?.id ?: Long.MIN_VALUE,
+        )
     override suspend fun add(transaction: Transaction): Long = dao.insert(transaction.toEntity())
     override suspend fun addIfNew(transaction: Transaction): Boolean =
         dao.insertIfNew(transaction.toEntity()) != -1L

@@ -14,6 +14,7 @@ import com.mdibrahim.expensetracker.core.util.rupeesToMinor
 import com.mdibrahim.expensetracker.data.repository.AccountRepository
 import com.mdibrahim.expensetracker.data.repository.CategoryRepository
 import com.mdibrahim.expensetracker.data.repository.TransactionRepository
+import com.mdibrahim.expensetracker.ui.components.epochRange
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -23,13 +24,18 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.YearMonth
 import java.time.ZoneId
 import javax.inject.Inject
 
 data class EditTransactionUiState(
     val isLoading: Boolean = true,
     val isNew: Boolean = true,
+    /** Walking the month's uncategorised transactions: Save & next / Skip. */
+    val reviewMode: Boolean = false,
     val source: TransactionSource = TransactionSource.MANUAL,
+    /** From the bank SMS; shown read-only. */
+    val counterparty: String? = null,
     val amountText: String = "",
     val amountError: String? = null,
     val direction: TransactionDirection = TransactionDirection.DEBIT,
@@ -41,6 +47,8 @@ data class EditTransactionUiState(
     val categories: List<Category> = emptyList(),
     /** Set once saved or deleted; the screen navigates back when it sees this. */
     val isDone: Boolean = false,
+    /** Review mode: the next transaction to open instead of going back. */
+    val nextReviewId: Long? = null,
 )
 
 @HiltViewModel
@@ -52,9 +60,12 @@ class EditTransactionViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val transactionId: Long = savedStateHandle.get<Long>(ARG_ID) ?: NEW_ID
+    private val reviewMode: Boolean = savedStateHandle.get<Boolean>(ARG_REVIEW) ?: false
     private var existing: Transaction? = null
 
-    private val _uiState = MutableStateFlow(EditTransactionUiState(isNew = transactionId == NEW_ID))
+    private val _uiState = MutableStateFlow(
+        EditTransactionUiState(isNew = transactionId == NEW_ID, reviewMode = reviewMode),
+    )
     val uiState: StateFlow<EditTransactionUiState> = _uiState.asStateFlow()
 
     init {
@@ -81,6 +92,7 @@ class EditTransactionViewModel @Inject constructor(
                     state.copy(
                         isLoading = false,
                         source = loaded.source,
+                        counterparty = loaded.counterparty,
                         amountText = minorToMajor(loaded.amountMinor).toPlainString(),
                         direction = loaded.direction,
                         accountId = loaded.accountId,
@@ -128,6 +140,7 @@ class EditTransactionViewModel @Inject constructor(
             val occurredAt = state.dateTime.atZone(ZoneId.systemDefault()).toInstant()
             val note = state.note.trim().ifBlank { null }
             val base = existing
+            var saved: Transaction? = null
             if (base == null) {
                 transactions.add(
                     Transaction(
@@ -140,21 +153,36 @@ class EditTransactionViewModel @Inject constructor(
                     ),
                 )
             } else {
-                // copy() keeps source and externalId, so an edited SMS transaction
-                // still blocks the same SMS from being imported again.
-                transactions.update(
-                    base.copy(
-                        amountMinor = amountMinor!!,
-                        direction = state.direction,
-                        occurredAt = occurredAt,
-                        accountId = accountId,
-                        categoryId = state.categoryId,
-                        note = note,
-                    ),
+                // copy() keeps source, externalId, counterparty and balance, so an
+                // edited SMS transaction still blocks the same SMS from re-importing.
+                saved = base.copy(
+                    amountMinor = amountMinor!!,
+                    direction = state.direction,
+                    occurredAt = occurredAt,
+                    accountId = accountId,
+                    categoryId = state.categoryId,
+                    note = note,
                 )
+                transactions.update(saved)
             }
-            _uiState.update { it.copy(isDone = true) }
+            finish(after = saved)
         }
+    }
+
+    /** Review mode: leave this one as-is and move to the next. */
+    fun skip() {
+        viewModelScope.launch { finish(after = existing) }
+    }
+
+    /** In review mode, move on to the next uncategorised transaction in the same month. */
+    private suspend fun finish(after: Transaction?) {
+        val next = if (reviewMode && after != null) {
+            val range = YearMonth.from(after.occurredAt.atZone(ZoneId.systemDefault())).epochRange()
+            transactions.nextNeedingReview(range.startMillis, range.endMillis, after)
+        } else {
+            null
+        }
+        _uiState.update { it.copy(isDone = next == null, nextReviewId = next) }
     }
 
     fun delete() {
@@ -167,6 +195,7 @@ class EditTransactionViewModel @Inject constructor(
 
     companion object {
         const val ARG_ID = "id"
+        const val ARG_REVIEW = "review"
         const val NEW_ID = -1L
     }
 }

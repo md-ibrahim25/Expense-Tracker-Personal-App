@@ -24,11 +24,16 @@ import com.mdibrahim.expensetracker.ui.screens.placeholder.PlaceholderScreen
 import com.mdibrahim.expensetracker.ui.screens.settings.SettingsScreen
 import com.mdibrahim.expensetracker.ui.screens.transactions.TransactionsScreen
 
-/** Add (no id) or edit (id) a transaction. Not a tab, so the bottom bar hides here. */
-private const val EDIT_ROUTE = "transaction/edit?${EditTransactionViewModel.ARG_ID}={${EditTransactionViewModel.ARG_ID}}"
+private const val ARG_ID = EditTransactionViewModel.ARG_ID
+private const val ARG_REVIEW = EditTransactionViewModel.ARG_REVIEW
 
-private fun NavHostController.openEditor(id: Long = EditTransactionViewModel.NEW_ID) =
-    navigate("transaction/edit?${EditTransactionViewModel.ARG_ID}=$id")
+/** Add (no id), edit (id) or review (id + review=true). Not a tab, so the bottom bar hides. */
+private const val EDIT_ROUTE = "transaction/edit?$ARG_ID={$ARG_ID}&$ARG_REVIEW={$ARG_REVIEW}"
+
+private fun editRoute(id: Long, review: Boolean) = "transaction/edit?$ARG_ID=$id&$ARG_REVIEW=$review"
+
+private fun NavHostController.openEditor(id: Long = EditTransactionViewModel.NEW_ID, review: Boolean = false) =
+    navigate(editRoute(id, review))
 
 @Composable
 fun AppScaffold() {
@@ -76,6 +81,7 @@ fun AppScaffold() {
                 HomeScreen(
                     onAddTransaction = { navController.openEditor() },
                     onOpenTransaction = { navController.openEditor(it) },
+                    onStartReview = { navController.openEditor(it, review = true) },
                 )
             }
             composable(TopLevelDestination.TRANSACTIONS.route) {
@@ -93,13 +99,25 @@ fun AppScaffold() {
             composable(
                 route = EDIT_ROUTE,
                 arguments = listOf(
-                    navArgument(EditTransactionViewModel.ARG_ID) {
+                    navArgument(ARG_ID) {
                         type = NavType.LongType
                         defaultValue = EditTransactionViewModel.NEW_ID
                     },
+                    navArgument(ARG_REVIEW) {
+                        type = NavType.BoolType
+                        defaultValue = false
+                    },
                 ),
             ) {
-                EditTransactionScreen(onDone = { navController.popBackStack() })
+                EditTransactionScreen(
+                    onDone = { navController.popBackStack() },
+                    onNextReview = { nextId ->
+                        // Replace, don't stack: Back from any review step returns home.
+                        navController.navigate(editRoute(nextId, review = true)) {
+                            popUpTo(EDIT_ROUTE) { inclusive = true }
+                        }
+                    },
+                )
             }
         }
     }

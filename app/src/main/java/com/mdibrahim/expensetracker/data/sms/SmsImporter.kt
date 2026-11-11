@@ -45,7 +45,9 @@ class SmsImporter @Inject constructor(
                 direction = parsed.direction,
                 occurredAt = Instant.ofEpochMilli(receivedAtMillis),
                 accountId = accountId,
-                note = parsed.description ?: "Canara Bank SMS",
+                // note stays empty: "what was it for" is the user's to fill in on review.
+                counterparty = parsed.counterparty,
+                balanceAfterMinor = parsed.balanceMinor,
                 source = TransactionSource.SMS,
                 externalId = smsId(body),
             ),

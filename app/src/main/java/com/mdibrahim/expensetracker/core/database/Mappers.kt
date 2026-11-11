@@ -1,6 +1,7 @@
 package com.mdibrahim.expensetracker.core.database
 
 import com.mdibrahim.expensetracker.core.model.Account
+import com.mdibrahim.expensetracker.core.model.AccountBalance
 import com.mdibrahim.expensetracker.core.model.AccountType
 import com.mdibrahim.expensetracker.core.model.Category
 import com.mdibrahim.expensetracker.core.model.Transaction
@@ -53,6 +54,8 @@ fun TransactionEntity.toDomain() = Transaction(
     accountId = accountId,
     categoryId = categoryId,
     note = note,
+    counterparty = counterparty,
+    balanceAfterMinor = balanceAfterMinor,
     source = enumValueOrDefault(source, TransactionSource.MANUAL),
     externalId = externalId,
 )
@@ -65,8 +68,16 @@ fun Transaction.toEntity() = TransactionEntity(
     accountId = accountId,
     categoryId = categoryId,
     note = note,
+    counterparty = counterparty,
+    balanceAfterMinor = balanceAfterMinor,
     source = source.name,
     externalId = externalId,
+)
+
+fun BalanceRow.toDomain() = AccountBalance(
+    accountId = accountId,
+    balanceMinor = balanceAfterMinor,
+    asOf = Instant.ofEpochMilli(occurredAtEpochMillis),
 )
 
 private inline fun <reified T : Enum<T>> enumValueOrDefault(value: String, default: T): T =

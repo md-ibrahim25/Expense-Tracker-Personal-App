@@ -5,8 +5,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -24,12 +26,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.mdibrahim.expensetracker.core.model.TransactionDirection
+import com.mdibrahim.expensetracker.core.util.formatMoney
+import com.mdibrahim.expensetracker.ui.components.MonthSelector
 import com.mdibrahim.expensetracker.ui.components.TransactionRow
+import com.mdibrahim.expensetracker.ui.theme.LocalMoneyColors
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
-private val DAY_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("EEE, d MMM yyyy")
+private val DAY_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("EEE, d MMM")
 
 @Composable
 fun TransactionsScreen(
@@ -39,28 +43,33 @@ fun TransactionsScreen(
     viewModel: TransactionsViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val moneyColors = LocalMoneyColors.current
 
     Box(modifier = modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-            Row(
+            MonthSelector(uiState.month, viewModel::previousMonth, viewModel::nextMonth)
+
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Out ${formatMoney(uiState.spentMinor)}", color = moneyColors.expense)
+                Text("In ${formatMoney(uiState.receivedMinor)}", color = moneyColors.income)
+            }
+
+            LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.padding(vertical = 8.dp),
             ) {
-                FilterChip(
-                    selected = uiState.filter == null,
-                    onClick = { viewModel.setFilter(null) },
-                    label = { Text("All") },
-                )
-                FilterChip(
-                    selected = uiState.filter == TransactionDirection.DEBIT,
-                    onClick = { viewModel.setFilter(TransactionDirection.DEBIT) },
-                    label = { Text("Money out") },
-                )
-                FilterChip(
-                    selected = uiState.filter == TransactionDirection.CREDIT,
-                    onClick = { viewModel.setFilter(TransactionDirection.CREDIT) },
-                    label = { Text("Money in") },
-                )
+                items(TransactionFilter.entries) { option ->
+                    val label = if (option == TransactionFilter.TO_REVIEW && uiState.toReviewCount > 0) {
+                        "${option.label} (${uiState.toReviewCount})"
+                    } else {
+                        option.label
+                    }
+                    FilterChip(
+                        selected = uiState.filter == option,
+                        onClick = { viewModel.setFilter(option) },
+                        label = { Text(label) },
+                    )
+                }
             }
 
             when {
@@ -68,7 +77,11 @@ fun TransactionsScreen(
                     CircularProgressIndicator(Modifier.align(Alignment.Center))
                 }
                 uiState.days.isEmpty() -> Text(
-                    text = "No transactions.",
+                    text = if (uiState.filter == TransactionFilter.TO_REVIEW) {
+                        "All caught up — nothing to review this month."
+                    } else {
+                        "No transactions this month."
+                    },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
