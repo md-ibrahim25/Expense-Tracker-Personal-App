@@ -1,6 +1,12 @@
 package com.mdibrahim.expensetracker.ui.components
 
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.outlined.Circle
+import androidx.compose.material3.Icon
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -54,6 +60,10 @@ fun TransactionRow(
     item: TransactionListItem,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Null disables long-press (e.g. on Home). */
+    onLongClick: (() -> Unit)? = null,
+    /** Null = not in selection mode; otherwise whether this row is selected. */
+    selected: Boolean? = null,
 ) {
     val transaction = item.transaction
     val moneyColors = LocalMoneyColors.current
@@ -84,10 +94,22 @@ fun TransactionRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .background(
+                if (selected == true) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
+            )
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (selected != null) {
+            // An icon, not just the background tint, shows the selection state.
+            Icon(
+                imageVector = if (selected) Icons.Filled.CheckCircle else Icons.Outlined.Circle,
+                contentDescription = if (selected) "Selected" else "Not selected",
+                tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                modifier = Modifier.padding(start = 4.dp, end = 12.dp),
+            )
+        }
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,

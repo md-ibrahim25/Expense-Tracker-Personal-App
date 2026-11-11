@@ -69,8 +69,17 @@ class RoomTransactionRepository @Inject constructor(
             afterId = after?.id ?: Long.MIN_VALUE,
         )
     override suspend fun add(transaction: Transaction): Long = dao.insert(transaction.toEntity())
-    override suspend fun addIfNew(transaction: Transaction): Boolean =
-        dao.insertIfNew(transaction.toEntity()) != -1L
+    override suspend fun addIfNew(transaction: Transaction): Boolean {
+        // Previously deleted by the user: respect that.
+        if (transaction.externalId?.let { dao.isIgnored(it) } == true) return false
+        return dao.insertIfNew(transaction.toEntity()) != -1L
+    }
     override suspend fun update(transaction: Transaction) = dao.update(transaction.toEntity())
-    override suspend fun delete(transaction: Transaction) = dao.delete(transaction.toEntity())
+    override suspend fun delete(transaction: Transaction) {
+        dao.deleteRemembering(listOf(transaction.id))
+    }
+
+    // Chunked to stay under SQLite's bound-parameter limit.
+    override suspend fun deleteAll(ids: Collection<Long>): Int =
+        ids.chunked(500).sumOf { dao.deleteRemembering(it) }
 }

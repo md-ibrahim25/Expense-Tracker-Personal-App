@@ -14,7 +14,7 @@ The project is split into two phases. **Phase 1 (done): foundations** — a runn
 
 Builds, `testDebugUnitTest` passes (16 `MoneyTest` + 9 `CanaraSmsParserTest` + 7 `BackupFilesTest`), and `lintDebug` has 0 errors. Build failures are regressions.
 
-**On-device so far** (owner's phone: vivo V2158, Android 14, adb serial `10BD1P092J0015L`): the app installs and launches without crashing, and an existing v2 database migrated to v3 (header `user_version` read back as 3). Everything else in the on-device list at the bottom is unverified; the owner plans to test it all at the end. The USB connection to this phone drops occasionally: if `installDebug` fails with "Unable to open sync connection", re-check `adb devices` and use `adb install -r app/build/outputs/apk/debug/app-debug.apk`.
+**On-device so far** (owner's phone: vivo V2158, Android 14, adb serial `10BD1P092J0015L`): the app installs and launches without crashing, and the existing database migrated through v3 to v4 (header `user_version` read back each time). Everything else in the on-device list at the bottom is unverified; the owner plans to test it all at the end. The USB connection to this phone drops occasionally: if `installDebug` fails with "Unable to open sync connection", re-check `adb devices` and use `adb install -r app/build/outputs/apk/debug/app-debug.apk`.
 
 The Canara SMS parser is built against **real messages from the owner's phone** (5 transaction formats + 3 non-transaction ones, listed in the `CanaraSmsParser` KDoc). Test bodies keep the real wording but have names, UPI refs and account digits replaced — **never commit real SMS text**, since the repo is on GitHub. When a real SMS parses wrongly, add it (anonymised) to the test first.
 
@@ -71,7 +71,7 @@ Dependencies point strictly inward: `ui` → `data/repository` (interfaces) → 
 - **`di`** — `DatabaseModule` (Room + DAO providers), `RepositoryModule` (`@Binds` interface → implementation).
 - **`ui`** — `theme/`, `navigation/`, `components/` (shared `TransactionRow`, `MonthSelector`, and `SelectedMonth`, a `@Singleton` holding the month being viewed so Home and Transactions stay in sync), `screens/<screen>/`. ViewModels expose immutable state via `StateFlow`; Composables take state as parameters. Screens:
   - **Home:** month switcher, spent/received/net for the month, current bank balance, "N to review" banner, 5 most recent.
-  - **Transactions:** month switcher, month in/out totals, filters All / Money out / Money in / To review, grouped by day.
+  - **Transactions:** month switcher, month in/out totals, filters All / Money out / Money in / To review, grouped by day. Long-press starts multi-select (tap toggles, Select all, Delete with confirmation; Back exits). Selection is cleared on month or filter change and is always intersected with the visible rows, so Delete can't hit hidden ones.
   - **Edit:** add/edit/delete. Route `transaction/edit?id=&review=` (`id=-1` means new). In review mode it shows "Save & next" and "Skip" and steps through the month's uncategorised transactions, each replacing the previous one in the back stack.
   - **Settings:** SMS permission, inbox import, Drive backup.
   - **Reports:** still a placeholder.
@@ -90,6 +90,8 @@ Dependencies point strictly inward: `ui` → `data/repository` (interfaces) → 
 
 **`note` is the user's, `counterparty` is the bank's.** `note` = "what was it for", written only by the user on review. `counterparty` = who was paid or who paid, and `balanceAfterMinor` = the balance the bank reported; both come from the SMS. The SMS importer leaves `note` empty. Don't put SMS text into `note` again: v3's migration (`V3MovePayeeOutOfNote`) exists to undo exactly that.
 
+**Deleted SMS transactions stay deleted.** Every transaction delete goes through `TransactionDao.deleteRemembering`, which first copies the rows' `externalId`s into `ignored_external_ids` (in the same transaction), and `addIfNew` refuses ignored ids. Deleting with a plain `@Delete` or `DELETE` query would let the next inbox import resurrect the rows. Caveat: deleting an account still cascades to its transactions *without* tombstones; there's no account-delete UI yet, but route it through `deleteRemembering` when one is added.
+
 **"Needs review" means `categoryId == null`** (`Transaction.needsReview`), whatever the source. The review queue (`nextNeedingReview`) is scoped to one month and walks forward in date order, so a skipped transaction isn't served again in the same pass.
 
 **Current balance = the bank's own number**, taken from the most recent transaction on that account that carried one (`observeLatestBalances`). It isn't computed by summing transactions, because the app has no opening balance and misses non-SMS movements, so a computed figure would drift. It's shown with an "as of" time.
@@ -100,7 +102,7 @@ Dependencies point strictly inward: `ui` → `data/repository` (interfaces) → 
 
 **The UI never imports Room.** Screens and ViewModels depend only on the repository interfaces. This is the entire mechanism by which cloud sync can be added later — a new implementation plus a changed `@Binds` in `di/RepositoryModule.kt`, with no screen touched. Adding a Room import to `ui/` defeats it.
 
-**No `fallbackToDestructiveMigration`.** Losing real expense history to a schema change is unacceptable. Write proper migrations. `exportSchema = true` and `app/schemas/` is committed so migrations are diffable rather than guesswork. Current schema is **v3** (`ExpenseDatabase.VERSION`). 1→2 (`source`, `externalId`) is a plain `@AutoMigration`; 2→3 (`counterparty`, `balanceAfterMinor`) is an `@AutoMigration` with an `AutoMigrationSpec` that moves SMS payees out of `note`. Purely additive changes can keep using `AutoMigration` (new NOT NULL columns need a `@ColumnInfo(defaultValue = ...)`); renames/drops need an `AutoMigrationSpec` or a manual `Migration`. Bump `version` and add the migration in `ExpenseDatabase` for every entity change.
+**No `fallbackToDestructiveMigration`.** Losing real expense history to a schema change is unacceptable. Write proper migrations. `exportSchema = true` and `app/schemas/` is committed so migrations are diffable rather than guesswork. Current schema is **v4** (`ExpenseDatabase.VERSION`). 1→2 (`source`, `externalId`) is a plain `@AutoMigration`; 2→3 (`counterparty`, `balanceAfterMinor`) is an `@AutoMigration` with an `AutoMigrationSpec` that moves SMS payees out of `note`; 3→4 adds the `ignored_external_ids` table (plain `@AutoMigration`). Purely additive changes can keep using `AutoMigration` (new NOT NULL columns need a `@ColumnInfo(defaultValue = ...)`); renames/drops need an `AutoMigrationSpec` or a manual `Migration`. Bump `version` and add the migration in `ExpenseDatabase` for every entity change.
 
 **Dates** are stored as `occurredAtEpochMillis` (`Long`) and converted to `java.time.Instant` in the mappers — there are no Room `TypeConverter`s, by choice. `minSdk = 26` means `java.time` is available natively without desugaring.
 
@@ -143,3 +145,4 @@ The repo owner is building this to learn Android development, and is cost-consci
 12. Month switcher: ‹ › on Home moves the month and Transactions shows the same month; › stops at the current month.
 13. After an inbox import, Home shows "N transactions to review"; Review → Save & next walks through them and returns Home at the end; the count drops. Skip moves on without saving.
 14. Home "Current balance" equals the Bal figure in the newest Canara SMS.
+15. Transactions: long-press a row, tap two more, Delete → confirm; all three disappear and the month totals drop. Delete an SMS one, run Import past SMS again; it must not come back.

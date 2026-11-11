@@ -20,6 +20,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
@@ -50,18 +52,24 @@ data class TransactionsUiState(
     val receivedMinor: Long = 0,
     val toReviewCount: Int = 0,
     val days: List<DayGroup> = emptyList(),
-)
+    /** Non-empty = selection mode. */
+    val selectedIds: Set<Long> = emptySet(),
+) {
+    val isSelecting: Boolean get() = selectedIds.isNotEmpty()
+    val visibleIds: List<Long> get() = days.flatMap { day -> day.items.map { it.transaction.id } }
+}
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class TransactionsViewModel @Inject constructor(
-    transactionRepository: TransactionRepository,
+    private val transactionRepository: TransactionRepository,
     accountRepository: AccountRepository,
     categoryRepository: CategoryRepository,
     private val selectedMonth: SelectedMonth,
 ) : ViewModel() {
 
     private val filter = MutableStateFlow(TransactionFilter.ALL)
+    private val selection = MutableStateFlow<Set<Long>>(emptySet())
 
     private val monthTransactions = selectedMonth.month.flatMapLatest { month ->
         val range = month.epochRange()
@@ -74,8 +82,10 @@ class TransactionsViewModel @Inject constructor(
         accountRepository.observeAccounts(),
         categoryRepository.observeCategories(),
         filter,
-    ) { (month, transactions), accounts, categories, activeFilter ->
+        selection,
+    ) { (month, transactions), accounts, categories, activeFilter, selected ->
         val zone = ZoneId.systemDefault()
+        val visible = transactions.filter(activeFilter::matches)
         TransactionsUiState(
             isLoading = false,
             month = month,
@@ -84,16 +94,42 @@ class TransactionsViewModel @Inject constructor(
             receivedMinor = transactions.filter { it.direction == TransactionDirection.CREDIT }.sumOf { it.amountMinor },
             toReviewCount = transactions.count { it.needsReview },
             // Repository already orders newest first, and groupBy keeps that order.
-            days = buildListItems(transactions.filter(activeFilter::matches), accounts, categories)
+            days = buildListItems(visible, accounts, categories)
                 .groupBy { it.transaction.occurredAt.atZone(zone).toLocalDate() }
                 .map { (date, items) -> DayGroup(date, items) },
+            // Only what's on screen can be selected; drop ids that scrolled out of the
+            // list (deleted elsewhere, filtered away) so Delete never hits hidden rows.
+            selectedIds = selected intersect visible.map { it.id }.toSet(),
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TransactionsUiState())
 
     fun setFilter(value: TransactionFilter) {
         filter.value = value
+        clearSelection()
     }
 
-    fun previousMonth() = selectedMonth.previous()
-    fun nextMonth() = selectedMonth.next()
+    fun previousMonth() {
+        clearSelection()
+        selectedMonth.previous()
+    }
+
+    fun nextMonth() {
+        clearSelection()
+        selectedMonth.next()
+    }
+
+    /** Long-press starts selection; in selection mode a tap toggles too. */
+    fun toggleSelection(id: Long) = selection.update { if (id in it) it - id else it + id }
+
+    fun selectAllVisible() = selection.update { uiState.value.visibleIds.toSet() }
+    fun clearSelection() = selection.update { emptySet() }
+
+    fun deleteSelected() {
+        val ids = uiState.value.selectedIds
+        if (ids.isEmpty()) return
+        viewModelScope.launch {
+            transactionRepository.deleteAll(ids)
+            clearSelection()
+        }
+    }
 }

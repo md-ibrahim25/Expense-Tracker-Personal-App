@@ -54,4 +54,7 @@ interface TransactionRepository {
     suspend fun addIfNew(transaction: Transaction): Boolean
     suspend fun update(transaction: Transaction)
     suspend fun delete(transaction: Transaction)
+
+    /** Deletes all of [ids]; captured ones won't be re-imported. Returns the number deleted. */
+    suspend fun deleteAll(ids: Collection<Long>): Int
 }

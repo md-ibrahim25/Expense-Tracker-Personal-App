@@ -5,6 +5,7 @@ import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 
@@ -117,6 +118,27 @@ interface TransactionDao {
     @Update
     suspend fun update(transaction: TransactionEntity)
 
-    @Delete
-    suspend fun delete(transaction: TransactionEntity)
+    @Query(
+        """
+        INSERT OR IGNORE INTO ignored_external_ids (externalId)
+        SELECT externalId FROM transactions WHERE id IN (:ids) AND externalId IS NOT NULL
+        """,
+    )
+    suspend fun ignoreExternalIdsOf(ids: List<Long>)
+
+    @Query("DELETE FROM transactions WHERE id IN (:ids)")
+    suspend fun deleteByIds(ids: List<Long>): Int
+
+    /**
+     * The only way transactions are deleted: remembers captured ones' externalIds
+     * first, in the same transaction, so a later import can't resurrect them.
+     */
+    @Transaction
+    suspend fun deleteRemembering(ids: List<Long>): Int {
+        ignoreExternalIdsOf(ids)
+        return deleteByIds(ids)
+    }
+
+    @Query("SELECT EXISTS(SELECT 1 FROM ignored_external_ids WHERE externalId = :externalId)")
+    suspend fun isIgnored(externalId: String): Boolean
 }

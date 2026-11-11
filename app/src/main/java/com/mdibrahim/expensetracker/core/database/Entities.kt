@@ -81,6 +81,15 @@ data class TransactionEntity(
     val balanceAfterMinor: Long? = null,
 )
 
+/**
+ * externalIds of captured transactions the user deleted. Without this, deleting an
+ * SMS transaction would let the next inbox import bring it straight back.
+ */
+@Entity(tableName = "ignored_external_ids")
+data class IgnoredExternalIdEntity(
+    @PrimaryKey val externalId: String,
+)
+
 /** Projection for [TransactionDao.observeLatestBalances]. */
 data class BalanceRow(
     val accountId: Long,
