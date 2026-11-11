@@ -139,7 +139,7 @@ The repo owner is building this to learn Android development, and is cost-consci
 8. Receive a real Canara SMS with the app closed — it appears without opening the app.
 9. Settings → Back up now: consent screen appears the first time, then "Backed up"; the file shows in Drive under "Expense Tracker Backups". A second tap needs no consent.
 10. Add a transaction, then Restore the earlier backup: the app restarts and the new transaction is gone (and `pre-restore-backup.db` exists in the app's files dir).
+11. Turn on "Back up daily". To test without waiting a day: `adb shell cmd jobscheduler run -f com.mdibrahim.expensetracker.debug <jobId>` (find the id with `adb shell dumpsys jobscheduler | grep expensetracker`), then check "Last backup" updates.
 12. Month switcher: ‹ › on Home moves the month and Transactions shows the same month; › stops at the current month.
 13. After an inbox import, Home shows "N transactions to review"; Review → Save & next walks through them and returns Home at the end; the count drops. Skip moves on without saving.
 14. Home "Current balance" equals the Bal figure in the newest Canara SMS.
-11. Turn on "Back up daily". To test without waiting a day: `adb shell cmd jobscheduler run -f com.mdibrahim.expensetracker.debug <jobId>` (find the id with `adb shell dumpsys jobscheduler | grep expensetracker`), then check "Last backup" updates.
