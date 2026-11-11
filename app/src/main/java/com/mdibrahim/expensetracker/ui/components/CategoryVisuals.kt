@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.MedicalServices
 import androidx.compose.material.icons.filled.QuestionMark
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.ShoppingBag
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -37,6 +38,7 @@ fun categoryIcon(iconKey: String?): ImageVector = when (iconKey) {
     "bills" -> Icons.AutoMirrored.Filled.ReceiptLong
     "shopping" -> Icons.Filled.ShoppingBag
     "health" -> Icons.Filled.MedicalServices
+    "self_transfer" -> Icons.Filled.SwapHoriz
     else -> Icons.Filled.Category
 }
 

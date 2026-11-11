@@ -19,6 +19,8 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  *      transaction's payee was stored in `note`; [V3MovePayeeOutOfNote] moves it so
  *      `note` is free for the user's own "what was it for".
  * - 4: ignored_external_ids table, so deleted SMS transactions stay deleted.
+ * - 5: categories.excludeFromTotals and payee_rules. [V5AddSelfTransfer] adds the
+ *      "Self transfer" category to existing installs (fresh ones get it from the seeder).
  */
 @Database(
     entities = [
@@ -26,6 +28,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         CategoryEntity::class,
         TransactionEntity::class,
         IgnoredExternalIdEntity::class,
+        PayeeRuleEntity::class,
     ],
     version = ExpenseDatabase.VERSION,
     exportSchema = true,
@@ -33,12 +36,14 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3, spec = ExpenseDatabase.V3MovePayeeOutOfNote::class),
         AutoMigration(from = 3, to = 4),
+        AutoMigration(from = 4, to = 5, spec = ExpenseDatabase.V5AddSelfTransfer::class),
     ],
 )
 abstract class ExpenseDatabase : RoomDatabase() {
     abstract fun accountDao(): AccountDao
     abstract fun categoryDao(): CategoryDao
     abstract fun transactionDao(): TransactionDao
+    abstract fun payeeRuleDao(): PayeeRuleDao
 
     class V3MovePayeeOutOfNote : AutoMigrationSpec {
         override fun onPostMigrate(db: SupportSQLiteDatabase) {
@@ -54,10 +59,23 @@ abstract class ExpenseDatabase : RoomDatabase() {
         }
     }
 
+    class V5AddSelfTransfer : AutoMigrationSpec {
+        override fun onPostMigrate(db: SupportSQLiteDatabase) {
+            // Values match DatabaseSeeder's "Self transfer" entry.
+            db.execSQL(
+                """
+                INSERT INTO categories (name, iconKey, colorArgb, parentId, excludeFromTotals)
+                SELECT 'Self transfer', 'self_transfer', -11243910, NULL, 1
+                WHERE NOT EXISTS (SELECT 1 FROM categories WHERE name = 'Self transfer')
+                """.trimIndent(),
+            )
+        }
+    }
+
     companion object {
         const val NAME = "expense_tracker.db"
 
         /** Bump with every schema change. Also used to refuse backups from a newer app. */
-        const val VERSION = 4
+        const val VERSION = 5
     }
 }

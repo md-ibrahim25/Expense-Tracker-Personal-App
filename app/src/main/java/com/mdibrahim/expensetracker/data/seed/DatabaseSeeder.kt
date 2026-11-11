@@ -32,7 +32,12 @@ class DatabaseSeeder @Inject constructor(
         if (categoryDao.count() == 0) {
             categoryDao.insertAll(
                 DEFAULT_CATEGORIES.map { (name, color) ->
-                    Category(name = name, iconKey = name.lowercase(), colorArgb = color).toEntity()
+                    Category(
+                        name = name,
+                        iconKey = name.lowercase().replace(' ', '_'),
+                        colorArgb = color,
+                        excludeFromTotals = name in EXCLUDED_FROM_TOTALS,
+                    ).toEntity()
                 },
             )
         }
@@ -74,6 +79,11 @@ class DatabaseSeeder @Inject constructor(
             "Shopping" to 0xFFD81B60.toInt(),
             "Health" to 0xFF00897B.toInt(),
             "Other" to 0xFF757575.toInt(),
+            // Must match ExpenseDatabase.V5AddSelfTransfer (which adds it to older installs).
+            "Self transfer" to 0xFF546E7A.toInt(),
         )
+
+        /** Money moving between the user's own accounts isn't spending or income. */
+        val EXCLUDED_FROM_TOTALS = setOf("Self transfer")
     }
 }

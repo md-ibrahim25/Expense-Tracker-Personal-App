@@ -35,6 +35,27 @@ data class CategoryEntity(
     val iconKey: String,
     val colorArgb: Int,
     val parentId: Long? = null,
+    // Added in schema v5.
+    @ColumnInfo(defaultValue = "0") val excludeFromTotals: Boolean = false,
+)
+
+/** "Always put this payee in this category." Keyed by [payeeKey] of the SMS counterparty. */
+@Entity(
+    tableName = "payee_rules",
+    foreignKeys = [
+        ForeignKey(
+            entity = CategoryEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["categoryId"],
+            // A rule pointing at a deleted category is meaningless -- drop it.
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("categoryId")],
+)
+data class PayeeRuleEntity(
+    @PrimaryKey val payeeKey: String,
+    val categoryId: Long,
 )
 
 @Entity(

@@ -2,6 +2,8 @@ package com.mdibrahim.expensetracker.data.repository
 
 import com.mdibrahim.expensetracker.core.database.AccountDao
 import com.mdibrahim.expensetracker.core.database.CategoryDao
+import com.mdibrahim.expensetracker.core.database.PayeeRuleDao
+import com.mdibrahim.expensetracker.core.database.PayeeRuleEntity
 import com.mdibrahim.expensetracker.core.database.TransactionDao
 import com.mdibrahim.expensetracker.core.database.toDomain
 import com.mdibrahim.expensetracker.core.database.toEntity
@@ -10,6 +12,7 @@ import com.mdibrahim.expensetracker.core.model.AccountBalance
 import com.mdibrahim.expensetracker.core.model.AccountType
 import com.mdibrahim.expensetracker.core.model.Category
 import com.mdibrahim.expensetracker.core.model.Transaction
+import com.mdibrahim.expensetracker.core.model.payeeKey
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
@@ -44,6 +47,21 @@ class RoomCategoryRepository @Inject constructor(
     override suspend fun add(category: Category): Long = dao.insert(category.toEntity())
     override suspend fun update(category: Category) = dao.update(category.toEntity())
     override suspend fun delete(category: Category) = dao.delete(category.toEntity())
+}
+
+class RoomPayeeRuleRepository @Inject constructor(
+    private val rules: PayeeRuleDao,
+    private val transactions: TransactionDao,
+) : PayeeRuleRepository {
+    override suspend fun categoryFor(payee: String): Long? = rules.categoryFor(payeeKey(payee))
+
+    override suspend fun remember(payee: String, categoryId: Long) {
+        val key = payeeKey(payee)
+        rules.upsert(PayeeRuleEntity(key, categoryId))
+        transactions.categoriseUncategorisedFrom(key, categoryId)
+    }
+
+    override suspend fun forget(payee: String) = rules.delete(payeeKey(payee))
 }
 
 class RoomTransactionRepository @Inject constructor(

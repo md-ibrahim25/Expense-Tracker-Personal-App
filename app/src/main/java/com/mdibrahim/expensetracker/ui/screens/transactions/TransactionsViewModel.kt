@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.mdibrahim.expensetracker.core.model.Transaction
 import com.mdibrahim.expensetracker.core.model.TransactionDirection
+import com.mdibrahim.expensetracker.core.model.countsInTotals
 import com.mdibrahim.expensetracker.data.repository.AccountRepository
 import com.mdibrahim.expensetracker.data.repository.CategoryRepository
 import com.mdibrahim.expensetracker.data.repository.TransactionRepository
@@ -45,7 +46,8 @@ enum class TransactionFilter(val label: String) {
 data class DayGroup(val date: LocalDate, val items: List<TransactionListItem>) {
     /** Money out on this day (of the rows shown). */
     val spentMinor: Long
-        get() = items.filter { it.transaction.direction == TransactionDirection.DEBIT }
+        get() = items
+            .filter { it.transaction.direction == TransactionDirection.DEBIT && it.category?.excludeFromTotals != true }
             .sumOf { it.transaction.amountMinor }
 }
 
@@ -91,12 +93,14 @@ class TransactionsViewModel @Inject constructor(
     ) { (month, transactions), accounts, categories, activeFilter, selected ->
         val zone = ZoneId.systemDefault()
         val visible = transactions.filter(activeFilter::matches)
+        val excluded = categories.filter { it.excludeFromTotals }.map { it.id }.toSet()
+        val counted = transactions.filter { it.countsInTotals(excluded) }
         TransactionsUiState(
             isLoading = false,
             month = month,
             filter = activeFilter,
-            spentMinor = transactions.filter { it.direction == TransactionDirection.DEBIT }.sumOf { it.amountMinor },
-            receivedMinor = transactions.filter { it.direction == TransactionDirection.CREDIT }.sumOf { it.amountMinor },
+            spentMinor = counted.filter { it.direction == TransactionDirection.DEBIT }.sumOf { it.amountMinor },
+            receivedMinor = counted.filter { it.direction == TransactionDirection.CREDIT }.sumOf { it.amountMinor },
             toReviewCount = transactions.count { it.needsReview },
             // Repository already orders newest first, and groupBy keeps that order.
             days = buildListItems(visible, accounts, categories)

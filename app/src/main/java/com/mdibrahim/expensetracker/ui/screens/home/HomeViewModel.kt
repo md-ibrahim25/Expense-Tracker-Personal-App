@@ -3,6 +3,7 @@ package com.mdibrahim.expensetracker.ui.screens.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.mdibrahim.expensetracker.core.model.TransactionDirection
+import com.mdibrahim.expensetracker.core.model.countsInTotals
 import com.mdibrahim.expensetracker.data.repository.AccountRepository
 import com.mdibrahim.expensetracker.data.repository.CategoryRepository
 import com.mdibrahim.expensetracker.data.repository.TransactionRepository
@@ -61,11 +62,14 @@ class HomeViewModel @Inject constructor(
         categoryRepository.observeCategories(),
     ) { (month, transactions), balances, accounts, categories ->
         val accountNames = accounts.associate { it.id to it.name }
+        // e.g. Self transfer: money moving between own accounts isn't spending.
+        val excluded = categories.filter { it.excludeFromTotals }.map { it.id }.toSet()
+        val counted = transactions.filter { it.countsInTotals(excluded) }
         HomeUiState(
             isLoading = false,
             month = month,
-            spentMinor = transactions.filter { it.direction == TransactionDirection.DEBIT }.sumOf { it.amountMinor },
-            receivedMinor = transactions.filter { it.direction == TransactionDirection.CREDIT }.sumOf { it.amountMinor },
+            spentMinor = counted.filter { it.direction == TransactionDirection.DEBIT }.sumOf { it.amountMinor },
+            receivedMinor = counted.filter { it.direction == TransactionDirection.CREDIT }.sumOf { it.amountMinor },
             balances = balances.map {
                 BalanceLine(accountNames[it.accountId] ?: "Account", it.balanceMinor, it.asOf)
             },

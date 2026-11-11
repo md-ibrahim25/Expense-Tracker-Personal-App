@@ -28,7 +28,22 @@ data class Category(
     val colorArgb: Int,
     /** Set for subcategories. Null means a top-level category. */
     val parentId: Long? = null,
+    /**
+     * Money that moves but isn't spending or income -- e.g. "Self transfer" between
+     * the user's own accounts. Left out of every spent/received/net total.
+     */
+    val excludeFromTotals: Boolean = false,
 )
+
+/**
+ * Key for matching a payee across SMS: the bank writes the same person as
+ * "MOHAMMED IBR" in one message and "Mohammed Ibr" in another, and pads spaces.
+ */
+fun payeeKey(name: String): String = name.trim().replace(Regex("""\s+"""), " ").uppercase()
+
+/** Whether [transaction] counts toward spent/received totals, given the excluded category ids. */
+fun Transaction.countsInTotals(excludedCategoryIds: Set<Long>): Boolean =
+    categoryId == null || categoryId !in excludedCategoryIds
 
 /** Which way the money moved, from the perspective of the account. */
 enum class TransactionDirection { DEBIT, CREDIT }

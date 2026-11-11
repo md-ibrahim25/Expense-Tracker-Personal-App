@@ -6,6 +6,7 @@ import com.mdibrahim.expensetracker.core.model.AccountType
 import com.mdibrahim.expensetracker.core.model.Transaction
 import com.mdibrahim.expensetracker.core.model.TransactionSource
 import com.mdibrahim.expensetracker.data.repository.AccountRepository
+import com.mdibrahim.expensetracker.data.repository.PayeeRuleRepository
 import com.mdibrahim.expensetracker.data.repository.TransactionRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -27,6 +28,7 @@ class SmsImporter @Inject constructor(
     @ApplicationContext private val context: Context,
     private val transactions: TransactionRepository,
     private val accounts: AccountRepository,
+    private val payeeRules: PayeeRuleRepository,
 ) {
 
     /** Returns true if a new transaction was recorded. */
@@ -44,6 +46,8 @@ class SmsImporter @Inject constructor(
                 direction = parsed.direction,
                 occurredAt = Instant.ofEpochMilli(receivedAtMillis),
                 accountId = accountId,
+                // A remembered payee arrives already categorised, so it skips review.
+                categoryId = parsed.counterparty?.let { payeeRules.categoryFor(it) },
                 // note stays empty: "what was it for" is the user's to fill in on review.
                 counterparty = parsed.counterparty,
                 balanceAfterMinor = parsed.balanceMinor,

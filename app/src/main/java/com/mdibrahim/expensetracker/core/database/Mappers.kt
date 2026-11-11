@@ -36,6 +36,7 @@ fun CategoryEntity.toDomain() = Category(
     iconKey = iconKey,
     colorArgb = colorArgb,
     parentId = parentId,
+    excludeFromTotals = excludeFromTotals,
 )
 
 fun Category.toEntity() = CategoryEntity(
@@ -44,6 +45,7 @@ fun Category.toEntity() = CategoryEntity(
     iconKey = iconKey,
     colorArgb = colorArgb,
     parentId = parentId,
+    excludeFromTotals = excludeFromTotals,
 )
 
 fun TransactionEntity.toDomain() = Transaction(

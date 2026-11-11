@@ -2,6 +2,8 @@ package com.mdibrahim.expensetracker.di
 
 import com.mdibrahim.expensetracker.data.repository.AccountRepository
 import com.mdibrahim.expensetracker.data.repository.CategoryRepository
+import com.mdibrahim.expensetracker.data.repository.PayeeRuleRepository
+import com.mdibrahim.expensetracker.data.repository.RoomPayeeRuleRepository
 import com.mdibrahim.expensetracker.data.repository.RoomAccountRepository
 import com.mdibrahim.expensetracker.data.repository.RoomCategoryRepository
 import com.mdibrahim.expensetracker.data.repository.RoomTransactionRepository
@@ -27,6 +29,10 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindCategoryRepository(impl: RoomCategoryRepository): CategoryRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindPayeeRuleRepository(impl: RoomPayeeRuleRepository): PayeeRuleRepository
 
     @Binds
     @Singleton

@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.filled.AccountBalance
+import androidx.compose.material.icons.filled.AutoMode
+import androidx.compose.material3.Switch
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.NorthEast
@@ -204,6 +206,41 @@ fun EditTransactionScreen(
                             },
                         )
                     }
+                }
+            }
+
+            state.counterparty?.let { payee ->
+                val categoryName = state.categories.firstOrNull { it.id == state.categoryId }?.name
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(MaterialTheme.shapes.large)
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Filled.AutoMode, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            "Always put $payee in ${categoryName ?: "this category"}",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Text(
+                            if (categoryName == null) {
+                                "Pick a category first."
+                            } else {
+                                "Future SMS from them skip review. Ones waiting now are filled in too."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = state.rememberPayee && categoryName != null,
+                        onCheckedChange = viewModel::onRememberPayeeChange,
+                        enabled = categoryName != null,
+                    )
                 }
             }
 

@@ -32,6 +32,15 @@ interface CategoryRepository {
     suspend fun delete(category: Category)
 }
 
+/** "Always put this payee in this category." Payees are matched by [payeeKey]. */
+interface PayeeRuleRepository {
+    suspend fun categoryFor(payee: String): Long?
+
+    /** Saves the rule and categorises this payee's uncategorised transactions. */
+    suspend fun remember(payee: String, categoryId: Long)
+    suspend fun forget(payee: String)
+}
+
 interface TransactionRepository {
     fun observeTransactions(): Flow<List<Transaction>>
     fun observeTransactionsBetween(fromEpochMillis: Long, toEpochMillis: Long): Flow<List<Transaction>>

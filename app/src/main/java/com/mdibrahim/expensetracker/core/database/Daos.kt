@@ -155,4 +155,23 @@ interface TransactionDao {
 
     @Query("SELECT EXISTS(SELECT 1 FROM ignored_external_ids WHERE externalId = :externalId)")
     suspend fun isIgnored(externalId: String): Boolean
+
+    /**
+     * Categorises every still-uncategorised transaction from this payee. Counterparty
+     * text is already whitespace-collapsed by the parser, so UPPER() matches [payeeKey].
+     */
+    @Query("UPDATE transactions SET categoryId = :categoryId WHERE categoryId IS NULL AND UPPER(counterparty) = :payeeKey")
+    suspend fun categoriseUncategorisedFrom(payeeKey: String, categoryId: Long): Int
+}
+
+@Dao
+interface PayeeRuleDao {
+    @Query("SELECT categoryId FROM payee_rules WHERE payeeKey = :payeeKey")
+    suspend fun categoryFor(payeeKey: String): Long?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(rule: PayeeRuleEntity)
+
+    @Query("DELETE FROM payee_rules WHERE payeeKey = :payeeKey")
+    suspend fun delete(payeeKey: String)
 }

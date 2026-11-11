@@ -13,6 +13,7 @@ import com.mdibrahim.expensetracker.core.util.minorToMajor
 import com.mdibrahim.expensetracker.core.util.rupeesToMinor
 import com.mdibrahim.expensetracker.data.repository.AccountRepository
 import com.mdibrahim.expensetracker.data.repository.CategoryRepository
+import com.mdibrahim.expensetracker.data.repository.PayeeRuleRepository
 import com.mdibrahim.expensetracker.data.repository.TransactionRepository
 import com.mdibrahim.expensetracker.ui.components.epochRange
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -36,6 +37,8 @@ data class EditTransactionUiState(
     val source: TransactionSource = TransactionSource.MANUAL,
     /** From the bank SMS; shown read-only. */
     val counterparty: String? = null,
+    /** "Always put this payee in this category" -- a payee rule on save. */
+    val rememberPayee: Boolean = false,
     val amountText: String = "",
     val amountError: String? = null,
     val direction: TransactionDirection = TransactionDirection.DEBIT,
@@ -57,11 +60,15 @@ class EditTransactionViewModel @Inject constructor(
     private val transactions: TransactionRepository,
     private val accounts: AccountRepository,
     categories: CategoryRepository,
+    private val payeeRules: PayeeRuleRepository,
 ) : ViewModel() {
 
     private val transactionId: Long = savedStateHandle.get<Long>(ARG_ID) ?: NEW_ID
     private val reviewMode: Boolean = savedStateHandle.get<Boolean>(ARG_REVIEW) ?: false
     private var existing: Transaction? = null
+
+    /** Whether a payee rule existed when the screen opened (so switching off forgets it). */
+    private var hadPayeeRule = false
 
     private val _uiState = MutableStateFlow(
         EditTransactionUiState(isNew = transactionId == NEW_ID, reviewMode = reviewMode),
@@ -85,6 +92,7 @@ class EditTransactionViewModel @Inject constructor(
         viewModelScope.launch {
             val loaded = if (transactionId != NEW_ID) transactions.get(transactionId) else null
             existing = loaded
+            hadPayeeRule = loaded?.counterparty?.let { payeeRules.categoryFor(it) } != null
             _uiState.update { state ->
                 if (loaded == null) {
                     state.copy(isLoading = false)
@@ -93,6 +101,7 @@ class EditTransactionViewModel @Inject constructor(
                         isLoading = false,
                         source = loaded.source,
                         counterparty = loaded.counterparty,
+                        rememberPayee = hadPayeeRule,
                         amountText = minorToMajor(loaded.amountMinor).toPlainString(),
                         direction = loaded.direction,
                         accountId = loaded.accountId,
@@ -114,6 +123,7 @@ class EditTransactionViewModel @Inject constructor(
         _uiState.update { it.copy(categoryId = if (it.categoryId == id) null else id) }
 
     fun onNoteChange(note: String) = _uiState.update { it.copy(note = note) }
+    fun onRememberPayeeChange(remember: Boolean) = _uiState.update { it.copy(rememberPayee = remember) }
 
     /** Changes the day but keeps the time of day. */
     fun onDateChange(date: LocalDate) =
@@ -165,7 +175,22 @@ class EditTransactionViewModel @Inject constructor(
                 )
                 transactions.update(saved)
             }
+            updatePayeeRule(state)
             finish(after = saved)
+        }
+    }
+
+    /**
+     * Saves or removes the payee rule. Runs after the transaction is saved; saving a
+     * rule also categorises this payee's other waiting transactions, which the
+     * review walk then skips.
+     */
+    private suspend fun updatePayeeRule(state: EditTransactionUiState) {
+        val payee = state.counterparty ?: return
+        val categoryId = state.categoryId
+        when {
+            state.rememberPayee && categoryId != null -> payeeRules.remember(payee, categoryId)
+            !state.rememberPayee && hadPayeeRule -> payeeRules.forget(payee)
         }
     }
 
