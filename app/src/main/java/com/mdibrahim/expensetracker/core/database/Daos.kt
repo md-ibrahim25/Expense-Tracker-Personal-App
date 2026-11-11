@@ -3,6 +3,7 @@ package com.mdibrahim.expensetracker.core.database
 import androidx.room.Dao
 import androidx.room.Delete
 import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
@@ -14,6 +15,9 @@ interface AccountDao {
 
     @Query("SELECT COUNT(*) FROM accounts")
     suspend fun count(): Int
+
+    @Query("SELECT * FROM accounts WHERE name = :name LIMIT 1")
+    suspend fun findByName(name: String): AccountEntity?
 
     @Insert
     suspend fun insert(account: AccountEntity): Long
@@ -64,8 +68,15 @@ interface TransactionDao {
     @Query("SELECT COUNT(*) FROM transactions")
     suspend fun count(): Int
 
+    @Query("SELECT * FROM transactions WHERE id = :id")
+    suspend fun getById(id: Long): TransactionEntity?
+
     @Insert
     suspend fun insert(transaction: TransactionEntity): Long
+
+    /** Returns -1 when a row with the same externalId already exists. */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIfNew(transaction: TransactionEntity): Long
 
     @Update
     suspend fun update(transaction: TransactionEntity)

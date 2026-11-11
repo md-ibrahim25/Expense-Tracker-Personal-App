@@ -5,6 +5,7 @@ import com.mdibrahim.expensetracker.core.model.AccountType
 import com.mdibrahim.expensetracker.core.model.Category
 import com.mdibrahim.expensetracker.core.model.Transaction
 import com.mdibrahim.expensetracker.core.model.TransactionDirection
+import com.mdibrahim.expensetracker.core.model.TransactionSource
 import java.time.Instant
 
 /**
@@ -52,6 +53,8 @@ fun TransactionEntity.toDomain() = Transaction(
     accountId = accountId,
     categoryId = categoryId,
     note = note,
+    source = enumValueOrDefault(source, TransactionSource.MANUAL),
+    externalId = externalId,
 )
 
 fun Transaction.toEntity() = TransactionEntity(
@@ -62,6 +65,8 @@ fun Transaction.toEntity() = TransactionEntity(
     accountId = accountId,
     categoryId = categoryId,
     note = note,
+    source = source.name,
+    externalId = externalId,
 )
 
 private inline fun <reified T : Enum<T>> enumValueOrDefault(value: String, default: T): T =

@@ -33,6 +33,9 @@ data class Category(
 /** Which way the money moved, from the perspective of the account. */
 enum class TransactionDirection { DEBIT, CREDIT }
 
+/** How a transaction entered the app. */
+enum class TransactionSource { MANUAL, SMS }
+
 data class Transaction(
     val id: Long = 0,
     val amountMinor: Long,
@@ -41,4 +44,10 @@ data class Transaction(
     val accountId: Long,
     val categoryId: Long? = null,
     val note: String? = null,
+    val source: TransactionSource = TransactionSource.MANUAL,
+    /**
+     * Stable identity of the thing this was captured from (e.g. a hash of the SMS
+     * body). Unique when non-null, so re-importing the same SMS is a no-op.
+     */
+    val externalId: String? = null,
 )

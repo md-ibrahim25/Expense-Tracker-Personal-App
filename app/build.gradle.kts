@@ -46,6 +46,9 @@ android {
     kotlin {
         compilerOptions {
             jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+            // Opt in now to the future default (KT-73255): annotations on constructor
+            // properties, e.g. @StringRes / @ApplicationContext, apply to param + field.
+            freeCompilerArgs.add("-Xannotation-default-target=param-property")
         }
     }
 

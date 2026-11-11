@@ -24,8 +24,6 @@ class ExpenseTrackerApp : Application() {
     override fun onCreate() {
         super.onCreate()
 
-        if (BuildConfig.DEBUG) {
-            appScope.launch { seeder.seedIfEmpty() }
-        }
+        appScope.launch { seeder.seedIfEmpty(includeDemoData = BuildConfig.DEBUG) }
     }
 }

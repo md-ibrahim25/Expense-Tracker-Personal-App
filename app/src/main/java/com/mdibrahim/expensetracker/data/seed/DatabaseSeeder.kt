@@ -15,11 +15,11 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Inserts a small amount of starter data on first launch so the foundation is
- * visibly working. This is what proves the Room wiring actually persists: the
- * seeded rows must survive a force-stop.
+ * First-launch data. Idempotent -- each part no-ops once its table has rows.
  *
- * Idempotent -- it no-ops once any account exists, so it never duplicates.
+ * - Default categories: every build, so the category picker is never empty.
+ * - Demo account + ₹450 transaction: debug builds only. This is what proves Room
+ *   actually persists: the seeded row must survive a force-stop.
  */
 @Singleton
 class DatabaseSeeder @Inject constructor(
@@ -28,8 +28,16 @@ class DatabaseSeeder @Inject constructor(
     private val transactionDao: TransactionDao,
 ) {
 
-    suspend fun seedIfEmpty() {
-        if (accountDao.count() > 0) return
+    suspend fun seedIfEmpty(includeDemoData: Boolean) {
+        if (categoryDao.count() == 0) {
+            categoryDao.insertAll(
+                DEFAULT_CATEGORIES.map { (name, color) ->
+                    Category(name = name, iconKey = name.lowercase(), colorArgb = color).toEntity()
+                },
+            )
+        }
+
+        if (!includeDemoData || accountDao.count() > 0) return
 
         val accountId = accountDao.insert(
             Account(
@@ -37,12 +45,6 @@ class DatabaseSeeder @Inject constructor(
                 type = AccountType.BANK,
                 openingBalanceMinor = 0,
             ).toEntity(),
-        )
-
-        val categoryIds = categoryDao.insertAll(
-            DEFAULT_CATEGORIES.map { (name, color) ->
-                Category(name = name, iconKey = name.lowercase(), colorArgb = color).toEntity()
-            },
         )
 
         val now = Instant.now()
@@ -53,7 +55,7 @@ class DatabaseSeeder @Inject constructor(
                 direction = TransactionDirection.DEBIT,
                 occurredAt = now.minus(1, ChronoUnit.HOURS),
                 accountId = accountId,
-                categoryId = categoryIds.firstOrNull(),
+                categoryId = null,
                 note = "Seed transaction -- proves persistence works",
             ).toEntity(),
         )

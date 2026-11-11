@@ -1,6 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Bank SMS capture. RECEIVE_SMS: live messages. READ_SMS: back-fill from inbox.
+         Both are requested at runtime from the Settings tab, never at launch. -->
+    <uses-permission android:name="android.permission.RECEIVE_SMS" />
+    <uses-permission android:name="android.permission.READ_SMS" />
+
+    <!-- The app needs no SMS sending or telephony hardware; don't hide it from
+         devices without them. -->
+    <uses-feature android:name="android.hardware.telephony" android:required="false" />
+
     <application
         android:name=".ExpenseTrackerApp"
         android:allowBackup="true"
@@ -23,6 +32,17 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- BROADCAST_SMS permission means only the system can deliver to this
+             receiver; another app can't forge a fake bank SMS into it. -->
+        <receiver
+            android:name=".data.sms.SmsReceiver"
+            android:exported="true"
+            android:permission="android.permission.BROADCAST_SMS">
+            <intent-filter>
+                <action android:name="android.provider.Telephony.SMS_RECEIVED" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

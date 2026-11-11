@@ -1,5 +1,6 @@
 package com.mdibrahim.expensetracker.core.database
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -58,6 +59,9 @@ data class CategoryEntity(
         Index("categoryId"),
         // Nearly every query is "recent first" or "this month", so date leads.
         Index("occurredAtEpochMillis"),
+        // Dedupe for captured transactions. SQLite allows many NULLs in a unique
+        // index, so manual entries (externalId = null) are unaffected.
+        Index(value = ["externalId"], unique = true),
     ],
 )
 data class TransactionEntity(
@@ -69,4 +73,7 @@ data class TransactionEntity(
     val accountId: Long,
     val categoryId: Long? = null,
     val note: String? = null,
+    // Added in schema v2. The default lets the auto-migration backfill old rows.
+    @ColumnInfo(defaultValue = "MANUAL") val source: String = "MANUAL",
+    val externalId: String? = null,
 )
