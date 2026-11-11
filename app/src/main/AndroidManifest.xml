@@ -6,6 +6,9 @@
     <uses-permission android:name="android.permission.RECEIVE_SMS" />
     <uses-permission android:name="android.permission.READ_SMS" />
 
+    <!-- Google Drive backup. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <!-- The app needs no SMS sending or telephony hardware; don't hide it from
          devices without them. -->
     <uses-feature android:name="android.hardware.telephony" android:required="false" />

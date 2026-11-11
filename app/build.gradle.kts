@@ -99,6 +99,10 @@ dependencies {
     ksp(libs.hilt.compiler)
     implementation(libs.androidx.hilt.navigation.compose)
 
+    // Google Drive backup
+    implementation(libs.play.services.auth)
+    implementation(libs.androidx.work.runtime.ktx)
+
     testImplementation(libs.junit)
 
     androidTestImplementation(libs.androidx.junit)

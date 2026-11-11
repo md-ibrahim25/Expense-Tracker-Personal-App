@@ -24,6 +24,12 @@ room = "2.8.4"
 hilt = "2.57.2"
 hiltNavigationCompose = "1.3.0"
 
+# Google Drive backup. play-services-auth provides AuthorizationClient (the Drive
+# OAuth grant); the Drive REST API itself is called over plain HTTPS, no client lib.
+playServicesAuth = "22.0.0"
+# Daily auto-backup. Checked: no AGP 9 / compileSdk 37 requirement.
+work = "2.11.2"
+
 # Test
 junit = "4.13.2"
 androidxJunit = "1.2.1"
@@ -57,6 +63,9 @@ androidx-room-testing = { group = "androidx.room", name = "room-testing", versio
 hilt-android = { group = "com.google.dagger", name = "hilt-android", version.ref = "hilt" }
 hilt-compiler = { group = "com.google.dagger", name = "hilt-android-compiler", version.ref = "hilt" }
 androidx-hilt-navigation-compose = { group = "androidx.hilt", name = "hilt-navigation-compose", version.ref = "hiltNavigationCompose" }
+
+play-services-auth = { group = "com.google.android.gms", name = "play-services-auth", version.ref = "playServicesAuth" }
+androidx-work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "work" }
 
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidxJunit" }

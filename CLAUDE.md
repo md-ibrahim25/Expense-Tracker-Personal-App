@@ -10,7 +10,7 @@ The project is split into two phases. **Phase 1 (done): foundations** — a runn
 
 ## Current status
 
-Builds, `testDebugUnitTest` passes (16 `MoneyTest` + 9 `CanaraSmsParserTest`), and `lintDebug` has 0 errors. Build failures are regressions.
+Builds, `testDebugUnitTest` passes (16 `MoneyTest` + 9 `CanaraSmsParserTest` + 7 `BackupFilesTest`), and `lintDebug` has 0 errors. Build failures are regressions.
 
 **Nothing has been run on a phone yet** — all on-device steps in the verification list at the bottom are unverified.
 
@@ -65,6 +65,7 @@ Dependencies point strictly inward: `ui` → `data/repository` (interfaces) → 
 - **`data/repository`** — `Repositories.kt` holds the interfaces; `RoomRepositories.kt` holds the Room-backed implementations. DAO `Flow`s are mapped to domain models here.
 - **`data/seed`** — `DatabaseSeeder`, idempotent first-launch data: default categories in every build, demo account + ₹450 transaction in debug only.
 - **`data/sms`** — bank SMS capture. `CanaraSmsParser` (pure Kotlin, JVM-tested) → `SmsImporter` (maps to a `Transaction`, one app account per `Canara Bank ••<last digits>`, and back-fills from the inbox) → `SmsReceiver` (manifest `BroadcastReceiver` for live SMS). The receiver gets its dependencies through a Hilt `@EntryPoint`, not `@AndroidEntryPoint`: with the Hilt Gradle plugin an `@AndroidEntryPoint` receiver must call `super.onReceive()`, which Kotlin rejects because it's abstract.
+- **`data/backup`** — Google Drive backup. `DriveAuthorizer` (Play services `AuthorizationClient`, scope `drive.file` only) → `BackupManager` (orchestrates) → `DriveClient` (five Drive v3 REST calls over `HttpURLConnection`, no Google API client lib) + `LocalDatabaseBackup` (snapshot/validate/replace). `BackupFiles` holds the pure, JVM-tested rules (naming, pruning, multipart body). `AutoBackupWorker` is a daily WorkManager job using a Hilt `@EntryPoint` (no hilt-work). Settings/last-result live in `BackupPreferences` (SharedPreferences).
 - **`di`** — `DatabaseModule` (Room + DAO providers), `RepositoryModule` (`@Binds` interface → implementation).
 - **`ui`** — `theme/`, `navigation/`, `components/` (shared `TransactionRow`), `screens/<screen>/`. ViewModels expose immutable state via `StateFlow`; Composables take state as parameters. Screens: Home (month totals + recent), Transactions (day-grouped list, in/out filter), Edit (add/edit/delete; route `transaction/edit?id=`, `-1` = new, bottom bar hidden), Settings (SMS permission + inbox import), Reports (still a placeholder).
 
@@ -75,6 +76,10 @@ Dependencies point strictly inward: `ui` → `data/repository` (interfaces) → 
 **`TransactionEntity.amountMinor` is unsigned in meaning**; direction is carried by the `direction` column (`DEBIT`/`CREDIT`), not by the sign. `rupeesToMinor()` accepts negatives, so every entry point must reject `<= 0` itself (the edit ViewModel and the SMS parser both do).
 
 **Captured transactions are deduplicated by `externalId`** (unique index; SHA-256 of the SMS body, `sms:` prefix). The same SMS can arrive live and again via inbox import; `addIfNew` makes the second a no-op. Editing must preserve `source`/`externalId` (`copy()` on the loaded transaction), or the edited SMS would be re-imported as a duplicate. Multipart SMS bodies are joined before hashing so they match the inbox's stored body.
+
+**Backups are append-only and restore is validate-first.** Each backup is a new timestamped file in the Drive folder "Expense Tracker Backups"; the newest 10 are kept. Never switch to overwriting one file — a backup taken after something went wrong would destroy the last good copy. Snapshots go through SQLite (`VACUUM INTO` on API 30+, checkpoint + copy under a write transaction below), never a raw copy of the `.db` file, because Room's WAL may hold recent writes. Restore downloads → `validate()` (integrity, has `transactions`, `user_version` between 1 and `ExpenseDatabase.VERSION`) → saves current data to `filesDir/pre-restore-backup.db` → closes Room → swaps the file → restarts the process. Room can't downgrade, so a backup from a newer schema must be rejected, not opened.
+
+**Authorisation needs UI only the first time.** `DriveAuthorizer.authorize()` returns a token silently once granted, which is what the background worker relies on; if it returns `NeedsConsent`, the worker records an error rather than prompting.
 
 **SMS parsing is conservative.** Anything not clearly describing money that already moved (OTP, "will be debited", requests, failures) returns `null`. A missed SMS can be typed in by hand; a phantom transaction silently corrupts totals.
 
@@ -103,11 +108,11 @@ The repo owner is building this to learn Android development, and is cost-consci
 
 ## Phase 2 — feature milestones
 
-**Done (milestone 1):** manual entry (add/edit/delete), transactions list, Canara Bank SMS capture (live + inbox back-fill).
+**Done:** manual entry (add/edit/delete), transactions list, Canara Bank SMS capture (live + inbox back-fill), Google Drive backup/restore with optional daily auto-backup.
 
-**Owner's decisions so far:** bank is **Canara Bank only** (SMS debit/credit). Cloud sync, when it's built, is a **Google Drive backup file** — needs a Google Cloud Console OAuth client set up by the owner first.
+**Owner's decisions so far:** bank is **Canara Bank only** (SMS debit/credit). Cloud sync is a **Google Drive backup file** (built). It only works once the owner has set up Google Cloud Console: Drive API enabled, OAuth consent screen with the `drive.file` scope, and an **Android** OAuth client per build — package `com.mdibrahim.expensetracker.debug` + the debug keystore SHA-1 (`keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android`), plus a separate client for the release package once a release keystore exists. No client ID goes in the code. Error code 10 (`DEVELOPER_ERROR`) in the app means the package/SHA-1 doesn't match a client. If the consent screen stays in "Testing", Google may expire the grant after 7 days and auto-backup will stop until the owner taps Back up now; `drive.file` is a non-sensitive scope, so publishing it "In production" needs no verification.
 
-**Not started:** UPI app notification capture, budgets and overspend alerts, charts and reports (the Reports tab is still `ui/screens/placeholder/`), statement CSV/PDF import, receipt OCR, recurring-transaction detection, Google Drive backup, app lock/biometrics, home-screen widgets, export to Excel/Sheets. Also not built: managing accounts and categories in the app (they only come from the seeder and SMS import).
+**Not started:** UPI app notification capture, budgets and overspend alerts, charts and reports (the Reports tab is still `ui/screens/placeholder/`), statement CSV/PDF import, receipt OCR, recurring-transaction detection, app lock/biometrics, home-screen widgets, export to Excel/Sheets. Also not built: managing accounts and categories in the app (they only come from the seeder and SMS import).
 
 ## On-device verification
 
@@ -119,3 +124,6 @@ The repo owner is building this to learn Android development, and is cost-consci
 6. Add a transaction with +, edit it, delete it; the Home totals follow.
 7. Settings → Allow SMS access → Import past SMS: Canara debits/credits appear, tagged "SMS". Run the import twice — the count added the second time must be 0 (dedupe).
 8. Receive a real Canara SMS with the app closed — it appears without opening the app.
+9. Settings → Back up now: consent screen appears the first time, then "Backed up"; the file shows in Drive under "Expense Tracker Backups". A second tap needs no consent.
+10. Add a transaction, then Restore the earlier backup: the app restarts and the new transaction is gone (and `pre-restore-backup.db` exists in the app's files dir).
+11. Turn on "Back up daily". To test without waiting a day: `adb shell cmd jobscheduler run -f com.mdibrahim.expensetracker.debug <jobId>` (find the id with `adb shell dumpsys jobscheduler | grep expensetracker`), then check "Last backup" updates.

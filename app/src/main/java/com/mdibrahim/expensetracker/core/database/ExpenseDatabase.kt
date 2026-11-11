@@ -20,7 +20,7 @@ import androidx.room.RoomDatabase
         CategoryEntity::class,
         TransactionEntity::class,
     ],
-    version = 2,
+    version = ExpenseDatabase.VERSION,
     exportSchema = true,
     autoMigrations = [AutoMigration(from = 1, to = 2)],
 )
@@ -31,5 +31,8 @@ abstract class ExpenseDatabase : RoomDatabase() {
 
     companion object {
         const val NAME = "expense_tracker.db"
+
+        /** Bump with every schema change. Also used to refuse backups from a newer app. */
+        const val VERSION = 2
     }
 }

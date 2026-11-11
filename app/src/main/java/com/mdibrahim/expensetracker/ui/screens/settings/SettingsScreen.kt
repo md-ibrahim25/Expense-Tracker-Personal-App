@@ -109,6 +109,8 @@ fun SettingsScreen(
                 }
             }
         }
+
+        BackupSection()
     }
 }
 
