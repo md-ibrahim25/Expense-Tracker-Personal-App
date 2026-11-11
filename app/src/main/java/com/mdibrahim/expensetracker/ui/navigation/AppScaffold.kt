@@ -7,6 +7,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -20,6 +21,9 @@ import androidx.navigation.navArgument
 import com.mdibrahim.expensetracker.ui.screens.edit.EditTransactionScreen
 import com.mdibrahim.expensetracker.ui.screens.edit.EditTransactionViewModel
 import com.mdibrahim.expensetracker.ui.screens.home.HomeScreen
+import com.mdibrahim.expensetracker.ui.screens.people.PeopleScreen
+import com.mdibrahim.expensetracker.ui.screens.people.PersonScreen
+import com.mdibrahim.expensetracker.ui.screens.people.PersonViewModel
 import com.mdibrahim.expensetracker.ui.screens.settings.SettingsScreen
 import com.mdibrahim.expensetracker.ui.screens.transactions.TransactionsScreen
 
@@ -46,9 +50,14 @@ private fun NavHostController.openTab(destination: TopLevelDestination) =
 private fun NavHostController.openEditor(id: Long = EditTransactionViewModel.NEW_ID, review: Boolean = false) =
     navigate(editRoute(id, review))
 
+private const val PERSON_ROUTE = "person/{${PersonViewModel.ARG_PERSON_ID}}"
+private fun personRoute(id: Long) = "person/$id"
+
+/** [openPersonId]: from a reminder notification -- open that friend's page on launch. */
 @Composable
-fun AppScaffold() {
+fun AppScaffold(openPersonId: Long? = null) {
     val navController = rememberNavController()
+    LaunchedEffect(openPersonId) { openPersonId?.let { navController.navigate(personRoute(it)) } }
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
     val showBottomBar = TopLevelDestination.entries.any { it.route == currentRoute }
@@ -83,6 +92,7 @@ fun AppScaffold() {
                     onOpenTransaction = { navController.openEditor(it) },
                     onStartReview = { navController.openEditor(it, review = true) },
                     onSeeAll = { navController.openTab(TopLevelDestination.TRANSACTIONS) },
+                    onOpenPeople = { navController.openTab(TopLevelDestination.PEOPLE) },
                 )
             }
             composable(TopLevelDestination.TRANSACTIONS.route) {
@@ -90,6 +100,15 @@ fun AppScaffold() {
                     onAddTransaction = { navController.openEditor() },
                     onOpenTransaction = { navController.openEditor(it) },
                 )
+            }
+            composable(TopLevelDestination.PEOPLE.route) {
+                PeopleScreen(onOpenPerson = { navController.navigate(personRoute(it)) })
+            }
+            composable(
+                route = PERSON_ROUTE,
+                arguments = listOf(navArgument(PersonViewModel.ARG_PERSON_ID) { type = NavType.LongType }),
+            ) {
+                PersonScreen(onBack = { navController.popBackStack() })
             }
             composable(TopLevelDestination.SETTINGS.route) {
                 SettingsScreen()

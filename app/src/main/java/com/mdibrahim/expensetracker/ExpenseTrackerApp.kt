@@ -1,6 +1,7 @@
 package com.mdibrahim.expensetracker
 
 import android.app.Application
+import com.mdibrahim.expensetracker.data.reminders.RepaymentReminderWorker
 import com.mdibrahim.expensetracker.data.seed.DatabaseSeeder
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
@@ -25,5 +26,6 @@ class ExpenseTrackerApp : Application() {
         super.onCreate()
 
         appScope.launch { seeder.seedIfEmpty(includeDemoData = BuildConfig.DEBUG) }
+        RepaymentReminderWorker.schedule(this)
     }
 }

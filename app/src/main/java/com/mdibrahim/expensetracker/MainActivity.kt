@@ -15,10 +15,17 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 
+        // Set when opened from a repayment-reminder notification.
+        val openPersonId = intent.getLongExtra(EXTRA_PERSON_ID, -1L).takeIf { it > 0 }
+
         setContent {
             ExpenseTrackerTheme {
-                AppScaffold()
+                AppScaffold(openPersonId = openPersonId)
             }
         }
+    }
+
+    companion object {
+        const val EXTRA_PERSON_ID = "personId"
     }
 }

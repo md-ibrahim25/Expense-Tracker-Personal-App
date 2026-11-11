@@ -5,6 +5,7 @@ import androidx.room.Room
 import com.mdibrahim.expensetracker.core.database.AccountDao
 import com.mdibrahim.expensetracker.core.database.CategoryDao
 import com.mdibrahim.expensetracker.core.database.ExpenseDatabase
+import com.mdibrahim.expensetracker.core.database.LendingDao
 import com.mdibrahim.expensetracker.core.database.PayeeRuleDao
 import com.mdibrahim.expensetracker.core.database.TransactionDao
 import dagger.Module
@@ -37,4 +38,7 @@ object DatabaseModule {
 
     @Provides
     fun providePayeeRuleDao(db: ExpenseDatabase): PayeeRuleDao = db.payeeRuleDao()
+
+    @Provides
+    fun provideLendingDao(db: ExpenseDatabase): LendingDao = db.lendingDao()
 }

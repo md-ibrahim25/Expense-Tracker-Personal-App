@@ -27,6 +27,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.EditNote
+import androidx.compose.material.icons.filled.Handshake
 import androidx.compose.material.icons.filled.SouthWest
 import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material.icons.automirrored.outlined.ReceiptLong
@@ -71,6 +72,7 @@ fun HomeScreen(
     onOpenTransaction: (Long) -> Unit,
     onStartReview: (firstId: Long) -> Unit,
     onSeeAll: () -> Unit,
+    onOpenPeople: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
@@ -96,6 +98,9 @@ fun HomeScreen(
             item { SpendingHero(uiState) }
             if (uiState.balances.isNotEmpty()) {
                 item { BalanceCard(uiState.balances) }
+            }
+            if (uiState.owedToYouMinor > 0) {
+                item { OwedCard(uiState.owedToYouMinor, uiState.overdueCount, onOpenPeople) }
             }
             item {
                 AnimatedVisibility(
@@ -263,6 +268,30 @@ private fun BalanceCard(balances: List<BalanceLine>) {
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun OwedCard(owedMinor: Long, overdueCount: Int, onClick: () -> Unit) {
+    Card(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.extraLarge,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+    ) {
+        Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconBadge(Icons.Filled.Handshake)
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Owed to you", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    if (overdueCount > 0) "$overdueCount overdue — tap to remind" else "Tap to see who owes what",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (overdueCount > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Text(formatMoney(owedMinor), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         }
     }
 }

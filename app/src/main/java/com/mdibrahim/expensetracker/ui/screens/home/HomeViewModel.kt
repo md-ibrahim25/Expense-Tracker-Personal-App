@@ -2,8 +2,8 @@ package com.mdibrahim.expensetracker.ui.screens.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.mdibrahim.expensetracker.core.model.TransactionDirection
-import com.mdibrahim.expensetracker.core.model.countsInTotals
+import com.mdibrahim.expensetracker.core.model.ownTotals
+import com.mdibrahim.expensetracker.data.repository.LendingRepository
 import com.mdibrahim.expensetracker.data.repository.AccountRepository
 import com.mdibrahim.expensetracker.data.repository.CategoryRepository
 import com.mdibrahim.expensetracker.data.repository.TransactionRepository
@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import java.time.Instant
+import java.time.LocalDate
 import java.time.YearMonth
 import javax.inject.Inject
 
@@ -33,6 +34,9 @@ data class HomeUiState(
     /** Bank-reported balances -- current, not tied to the selected month. */
     val balances: List<BalanceLine> = emptyList(),
     val toReviewCount: Int = 0,
+    /** Total friends owe the user right now (not tied to the month). */
+    val owedToYouMinor: Long = 0,
+    val overdueCount: Int = 0,
     /** Oldest transaction this month needing review -- where the review walk starts. */
     val firstToReviewId: Long? = null,
     val recent: List<TransactionListItem> = emptyList(),
@@ -46,6 +50,7 @@ class HomeViewModel @Inject constructor(
     transactionRepository: TransactionRepository,
     accountRepository: AccountRepository,
     categoryRepository: CategoryRepository,
+    lendingRepository: LendingRepository,
     private val selectedMonth: SelectedMonth,
 ) : ViewModel() {
 
@@ -60,16 +65,20 @@ class HomeViewModel @Inject constructor(
         transactionRepository.observeLatestBalances(),
         accountRepository.observeAccounts(),
         categoryRepository.observeCategories(),
-    ) { (month, transactions), balances, accounts, categories ->
+        combine(lendingRepository.observeOwedPerTransaction(), lendingRepository.observeSummaries(), ::Pair),
+    ) { (month, transactions), balances, accounts, categories, (owedPerTransaction, summaries) ->
         val accountNames = accounts.associate { it.id to it.name }
-        // e.g. Self transfer: money moving between own accounts isn't spending.
+        // Self transfer / Lending aren't spending, and friends' share of a split isn't yours.
         val excluded = categories.filter { it.excludeFromTotals }.map { it.id }.toSet()
-        val counted = transactions.filter { it.countsInTotals(excluded) }
+        val totals = ownTotals(transactions, excluded, owedPerTransaction)
+        val today = LocalDate.now()
         HomeUiState(
             isLoading = false,
             month = month,
-            spentMinor = counted.filter { it.direction == TransactionDirection.DEBIT }.sumOf { it.amountMinor },
-            receivedMinor = counted.filter { it.direction == TransactionDirection.CREDIT }.sumOf { it.amountMinor },
+            spentMinor = totals.spentMinor,
+            receivedMinor = totals.receivedMinor,
+            owedToYouMinor = summaries.sumOf { it.outstandingMinor.coerceAtLeast(0) },
+            overdueCount = summaries.count { it.outstandingMinor > 0 && it.isOverdue(today) },
             balances = balances.map {
                 BalanceLine(accountNames[it.accountId] ?: "Account", it.balanceMinor, it.asOf)
             },

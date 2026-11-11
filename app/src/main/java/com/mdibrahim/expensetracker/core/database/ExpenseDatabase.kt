@@ -21,6 +21,8 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  * - 4: ignored_external_ids table, so deleted SMS transactions stay deleted.
  * - 5: categories.excludeFromTotals and payee_rules. [V5AddSelfTransfer] adds the
  *      "Self transfer" category to existing installs (fresh ones get it from the seeder).
+ * - 6: people, person_payees, debts, repayments. [V6AddLending] adds the "Lending"
+ *      category (excluded from totals) used for loans and repayments.
  */
 @Database(
     entities = [
@@ -29,6 +31,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         TransactionEntity::class,
         IgnoredExternalIdEntity::class,
         PayeeRuleEntity::class,
+        PersonEntity::class,
+        PersonPayeeEntity::class,
+        DebtEntity::class,
+        RepaymentEntity::class,
     ],
     version = ExpenseDatabase.VERSION,
     exportSchema = true,
@@ -37,6 +43,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         AutoMigration(from = 2, to = 3, spec = ExpenseDatabase.V3MovePayeeOutOfNote::class),
         AutoMigration(from = 3, to = 4),
         AutoMigration(from = 4, to = 5, spec = ExpenseDatabase.V5AddSelfTransfer::class),
+        AutoMigration(from = 5, to = 6, spec = ExpenseDatabase.V6AddLending::class),
     ],
 )
 abstract class ExpenseDatabase : RoomDatabase() {
@@ -44,6 +51,7 @@ abstract class ExpenseDatabase : RoomDatabase() {
     abstract fun categoryDao(): CategoryDao
     abstract fun transactionDao(): TransactionDao
     abstract fun payeeRuleDao(): PayeeRuleDao
+    abstract fun lendingDao(): LendingDao
 
     class V3MovePayeeOutOfNote : AutoMigrationSpec {
         override fun onPostMigrate(db: SupportSQLiteDatabase) {
@@ -72,10 +80,23 @@ abstract class ExpenseDatabase : RoomDatabase() {
         }
     }
 
+    class V6AddLending : AutoMigrationSpec {
+        override fun onPostMigrate(db: SupportSQLiteDatabase) {
+            // Values match DatabaseSeeder's "Lending" entry.
+            db.execSQL(
+                """
+                INSERT INTO categories (name, iconKey, colorArgb, parentId, excludeFromTotals)
+                SELECT 'Lending', 'lending', -9614271, NULL, 1
+                WHERE NOT EXISTS (SELECT 1 FROM categories WHERE name = 'Lending')
+                """.trimIndent(),
+            )
+        }
+    }
+
     companion object {
         const val NAME = "expense_tracker.db"
 
         /** Bump with every schema change. Also used to refuse backups from a newer app. */
-        const val VERSION = 5
+        const val VERSION = 6
     }
 }

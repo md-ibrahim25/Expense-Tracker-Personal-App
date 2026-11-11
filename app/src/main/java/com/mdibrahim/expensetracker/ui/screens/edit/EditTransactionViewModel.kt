@@ -6,6 +6,13 @@ import androidx.lifecycle.viewModelScope
 import com.mdibrahim.expensetracker.core.model.Account
 import com.mdibrahim.expensetracker.core.model.AccountType
 import com.mdibrahim.expensetracker.core.model.Category
+import com.mdibrahim.expensetracker.core.model.Debt
+import com.mdibrahim.expensetracker.core.model.DebtKind
+import com.mdibrahim.expensetracker.core.model.LENDING_CATEGORY_NAME
+import com.mdibrahim.expensetracker.core.model.Person
+import com.mdibrahim.expensetracker.core.model.PersonSummary
+import com.mdibrahim.expensetracker.core.model.Repayment
+import com.mdibrahim.expensetracker.core.model.equalShareMinor
 import com.mdibrahim.expensetracker.core.model.Transaction
 import com.mdibrahim.expensetracker.core.model.TransactionDirection
 import com.mdibrahim.expensetracker.core.model.TransactionSource
@@ -13,6 +20,7 @@ import com.mdibrahim.expensetracker.core.util.minorToMajor
 import com.mdibrahim.expensetracker.core.util.rupeesToMinor
 import com.mdibrahim.expensetracker.data.repository.AccountRepository
 import com.mdibrahim.expensetracker.data.repository.CategoryRepository
+import com.mdibrahim.expensetracker.data.repository.LendingRepository
 import com.mdibrahim.expensetracker.data.repository.PayeeRuleRepository
 import com.mdibrahim.expensetracker.data.repository.TransactionRepository
 import com.mdibrahim.expensetracker.ui.components.epochRange
@@ -28,6 +36,14 @@ import java.time.LocalDateTime
 import java.time.YearMonth
 import java.time.ZoneId
 import javax.inject.Inject
+
+/** A friend's share of this payment, as edited on the form (saved with the transaction). */
+data class DraftDebt(
+    val personId: Long,
+    val amountMinor: Long,
+    val kind: DebtKind,
+    val dueDate: LocalDate?,
+)
 
 data class EditTransactionUiState(
     val isLoading: Boolean = true,
@@ -52,7 +68,18 @@ data class EditTransactionUiState(
     val isDone: Boolean = false,
     /** Review mode: the next transaction to open instead of going back. */
     val nextReviewId: Long? = null,
-)
+    val people: List<Person> = emptyList(),
+    /** Debits: what friends owe of this payment (split shares or a loan). */
+    val debts: List<DraftDebt> = emptyList(),
+    /** Credits: the friend paying the user back with this money, if any. */
+    val repaymentPersonId: Long? = null,
+    /** The friend this SMS payee is linked to, with what they owe -- for one-tap suggestions. */
+    val suggestedPerson: PersonSummary? = null,
+    val lendingError: String? = null,
+) {
+    val lendingCategoryId: Long? get() = categories.firstOrNull { it.name == LENDING_CATEGORY_NAME }?.id
+    fun personName(id: Long): String = people.firstOrNull { it.id == id }?.name ?: "Someone"
+}
 
 @HiltViewModel
 class EditTransactionViewModel @Inject constructor(
@@ -61,6 +88,7 @@ class EditTransactionViewModel @Inject constructor(
     private val accounts: AccountRepository,
     categories: CategoryRepository,
     private val payeeRules: PayeeRuleRepository,
+    private val lending: LendingRepository,
 ) : ViewModel() {
 
     private val transactionId: Long = savedStateHandle.get<Long>(ARG_ID) ?: NEW_ID
@@ -90,9 +118,20 @@ class EditTransactionViewModel @Inject constructor(
                 }
         }
         viewModelScope.launch {
+            lending.observePeople().collect { people -> _uiState.update { it.copy(people = people) } }
+        }
+        viewModelScope.launch {
             val loaded = if (transactionId != NEW_ID) transactions.get(transactionId) else null
             existing = loaded
             hadPayeeRule = loaded?.counterparty?.let { payeeRules.categoryFor(it) } != null
+            val debts = loaded?.let { lending.debtsFor(it.id) }.orEmpty()
+                .map { DraftDebt(it.personId, it.amountMinor, it.kind, it.dueDate) }
+            val repaymentPersonId = loaded?.let { lending.repaymentFor(it.id) }?.personId
+            val suggested = loaded?.counterparty?.let { lending.personForPayee(it) }
+                ?.let { personId -> lending.summaries().firstOrNull { it.person.id == personId } }
+            _uiState.update {
+                it.copy(debts = debts, repaymentPersonId = repaymentPersonId, suggestedPerson = suggested)
+            }
             _uiState.update { state ->
                 if (loaded == null) {
                     state.copy(isLoading = false)
@@ -115,7 +154,10 @@ class EditTransactionViewModel @Inject constructor(
     }
 
     fun onAmountChange(text: String) = _uiState.update { it.copy(amountText = text, amountError = null) }
-    fun onDirectionChange(direction: TransactionDirection) = _uiState.update { it.copy(direction = direction) }
+    /** Split/loan and repayment only make sense for one direction each, so switching clears them. */
+    fun onDirectionChange(direction: TransactionDirection) = _uiState.update {
+        if (it.direction == direction) it else it.copy(direction = direction, debts = emptyList(), repaymentPersonId = null)
+    }
     fun onAccountChange(id: Long) = _uiState.update { it.copy(accountId = id) }
 
     /** Tapping the selected category again clears it. */
@@ -124,6 +166,52 @@ class EditTransactionViewModel @Inject constructor(
 
     fun onNoteChange(note: String) = _uiState.update { it.copy(note = note) }
     fun onRememberPayeeChange(remember: Boolean) = _uiState.update { it.copy(rememberPayee = remember) }
+
+    // ---- Lending ----
+
+    /** Equal split between the user and [personIds]; the user picks the category for their share. */
+    fun applySplit(personIds: List<Long>, due: LocalDate?) {
+        val amount = currentAmount() ?: return
+        val share = equalShareMinor(amount, personIds.size)
+        _uiState.update { s ->
+            s.copy(debts = personIds.map { DraftDebt(it, share, DebtKind.SPLIT, due) }, lendingError = null)
+        }
+    }
+
+    /** The whole payment was lent to one person: not spending, so it goes to Lending. */
+    fun applyLoan(personId: Long, due: LocalDate?) {
+        val amount = currentAmount() ?: return
+        _uiState.update { s ->
+            s.copy(
+                debts = listOf(DraftDebt(personId, amount, DebtKind.LOAN, due)),
+                categoryId = s.lendingCategoryId ?: s.categoryId,
+                lendingError = null,
+            )
+        }
+    }
+
+    fun clearDebts() = _uiState.update { s ->
+        s.copy(debts = emptyList(), categoryId = s.categoryId.takeUnless { it == s.lendingCategoryId })
+    }
+
+    fun setRepayment(personId: Long) = _uiState.update { s ->
+        s.copy(repaymentPersonId = personId, categoryId = s.lendingCategoryId ?: s.categoryId)
+    }
+
+    fun clearRepayment() = _uiState.update { s ->
+        s.copy(repaymentPersonId = null, categoryId = s.categoryId.takeUnless { it == s.lendingCategoryId })
+    }
+
+    fun addPerson(name: String, onAdded: (Long) -> Unit) {
+        if (name.isBlank()) return
+        viewModelScope.launch { onAdded(lending.addPerson(name, phone = null)) }
+    }
+
+    private fun currentAmount(): Long? {
+        val amount = rupeesToMinor(_uiState.value.amountText)?.takeIf { it > 0 }
+        if (amount == null) _uiState.update { it.copy(lendingError = "Enter the amount first.") }
+        return amount
+    }
 
     /** Changes the day but keeps the time of day. */
     fun onDateChange(date: LocalDate) =
@@ -142,6 +230,13 @@ class EditTransactionViewModel @Inject constructor(
             _uiState.update { it.copy(amountError = error) }
             return
         }
+        // A loan follows the amount if it was edited after lending; split shares don't
+        // rescale, so they must still fit inside what was paid.
+        val debts = state.debts.map { if (it.kind == DebtKind.LOAN) it.copy(amountMinor = amountMinor!!) else it }
+        if (debts.sumOf { it.amountMinor } > amountMinor!!) {
+            _uiState.update { it.copy(lendingError = "Friends' shares add up to more than the amount. Redo the split.") }
+            return
+        }
 
         viewModelScope.launch {
             // Release builds start with no accounts; don't make the user set one up
@@ -151,8 +246,9 @@ class EditTransactionViewModel @Inject constructor(
             val note = state.note.trim().ifBlank { null }
             val base = existing
             var saved: Transaction? = null
+            val savedId: Long
             if (base == null) {
-                transactions.add(
+                savedId = transactions.add(
                     Transaction(
                         amountMinor = amountMinor!!,
                         direction = state.direction,
@@ -174,10 +270,50 @@ class EditTransactionViewModel @Inject constructor(
                     note = note,
                 )
                 transactions.update(saved)
+                savedId = base.id
             }
+            saveLending(state, savedId, debts, amountMinor, occurredAt, note)
             updatePayeeRule(state)
             finish(after = saved)
         }
+    }
+
+    /** Writes this transaction's debts or repayment, and links the SMS payee to the friend. */
+    private suspend fun saveLending(
+        state: EditTransactionUiState,
+        transactionId: Long,
+        debts: List<DraftDebt>,
+        amountMinor: Long,
+        occurredAt: java.time.Instant,
+        note: String?,
+    ) {
+        val isDebit = state.direction == TransactionDirection.DEBIT
+        val categoryName = state.categories.firstOrNull { it.id == state.categoryId }
+            ?.name?.takeUnless { it == LENDING_CATEGORY_NAME }
+        lending.replaceDebts(
+            transactionId,
+            if (!isDebit) emptyList() else debts.map {
+                Debt(
+                    personId = it.personId,
+                    transactionId = transactionId,
+                    amountMinor = it.amountMinor,
+                    kind = it.kind,
+                    // Shown in reminders: "Dinner (5 Nov): ₹300".
+                    description = note ?: if (it.kind == DebtKind.LOAN) "Loan" else categoryName,
+                    occurredAt = occurredAt,
+                    dueDate = it.dueDate,
+                )
+            },
+        )
+        val repayer = state.repaymentPersonId.takeIf { !isDebit }
+        lending.replaceRepayment(
+            transactionId,
+            repayer?.let { Repayment(personId = it, transactionId = transactionId, amountMinor = amountMinor, occurredAt = occurredAt) },
+        )
+        // Remember whose UPI name this is, so next time it's a one-tap suggestion.
+        // Not for splits: there the payee is the restaurant, not the friend.
+        val linkedPerson = repayer ?: debts.singleOrNull { it.kind == DebtKind.LOAN }?.personId
+        if (linkedPerson != null) state.counterparty?.let { lending.linkPayee(it, linkedPerson) }
     }
 
     /**

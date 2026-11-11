@@ -4,10 +4,15 @@ import com.mdibrahim.expensetracker.core.model.Account
 import com.mdibrahim.expensetracker.core.model.AccountBalance
 import com.mdibrahim.expensetracker.core.model.AccountType
 import com.mdibrahim.expensetracker.core.model.Category
+import com.mdibrahim.expensetracker.core.model.Debt
+import com.mdibrahim.expensetracker.core.model.DebtKind
+import com.mdibrahim.expensetracker.core.model.Person
+import com.mdibrahim.expensetracker.core.model.Repayment
 import com.mdibrahim.expensetracker.core.model.Transaction
 import com.mdibrahim.expensetracker.core.model.TransactionDirection
 import com.mdibrahim.expensetracker.core.model.TransactionSource
 import java.time.Instant
+import java.time.LocalDate
 
 /**
  * Entity <-> domain mapping. Enums are stored as their `name` string rather than an
@@ -74,6 +79,47 @@ fun Transaction.toEntity() = TransactionEntity(
     balanceAfterMinor = balanceAfterMinor,
     source = source.name,
     externalId = externalId,
+)
+
+fun PersonEntity.toDomain() = Person(id = id, name = name, phone = phone)
+fun Person.toEntity() = PersonEntity(id = id, name = name, phone = phone)
+
+fun DebtEntity.toDomain() = Debt(
+    id = id,
+    personId = personId,
+    transactionId = transactionId,
+    amountMinor = amountMinor,
+    kind = enumValueOrDefault(kind, DebtKind.SPLIT),
+    description = description,
+    occurredAt = Instant.ofEpochMilli(occurredAtEpochMillis),
+    dueDate = dueEpochDay?.let(LocalDate::ofEpochDay),
+)
+
+fun Debt.toEntity() = DebtEntity(
+    id = id,
+    personId = personId,
+    transactionId = transactionId,
+    amountMinor = amountMinor,
+    kind = kind.name,
+    description = description,
+    occurredAtEpochMillis = occurredAt.toEpochMilli(),
+    dueEpochDay = dueDate?.toEpochDay(),
+)
+
+fun RepaymentEntity.toDomain() = Repayment(
+    id = id,
+    personId = personId,
+    transactionId = transactionId,
+    amountMinor = amountMinor,
+    occurredAt = Instant.ofEpochMilli(occurredAtEpochMillis),
+)
+
+fun Repayment.toEntity() = RepaymentEntity(
+    id = id,
+    personId = personId,
+    transactionId = transactionId,
+    amountMinor = amountMinor,
+    occurredAtEpochMillis = occurredAt.toEpochMilli(),
 )
 
 fun BalanceRow.toDomain() = AccountBalance(

@@ -14,7 +14,7 @@ The project is split into two phases. **Phase 1 (done): foundations** — a runn
 
 Builds, `testDebugUnitTest` passes (16 `MoneyTest` + 9 `CanaraSmsParserTest` + 7 `BackupFilesTest`), and `lintDebug` has 0 errors. Build failures are regressions.
 
-**On-device so far** (owner's phone: vivo V2158, Android 14, adb serial `10BD1P092J0015L`): the app installs and launches without crashing, and the existing database has migrated through every version to v5 (each one checked on the device; v5 also confirmed by querying the categories). Everything else in the on-device list at the bottom is unverified; the owner plans to test it all at the end. The USB connection to this phone drops occasionally: if `installDebug` fails with "Unable to open sync connection", re-check `adb devices` and use `adb install -r app/build/outputs/apk/debug/app-debug.apk`.
+**On-device so far** (owner's phone: vivo V2158, Android 14, adb serial `10BD1P092J0015L`): the app installs and launches without crashing, and the existing database has migrated through every version to v6 (each one checked on the device; v5 also confirmed by querying the categories). Everything else in the on-device list at the bottom is unverified; the owner plans to test it all at the end. The USB connection to this phone drops occasionally: if `installDebug` fails with "Unable to open sync connection", re-check `adb devices` and use `adb install -r app/build/outputs/apk/debug/app-debug.apk`.
 
 The Canara SMS parser is built against **real messages from the owner's phone** (5 transaction formats + 3 non-transaction ones, listed in the `CanaraSmsParser` KDoc). Test bodies keep the real wording but have names, UPI refs and account digits replaced — **never commit real SMS text**, since the repo is on GitHub. When a real SMS parses wrongly, add it (anonymised) to the test first.
 
@@ -68,6 +68,7 @@ Dependencies point strictly inward: `ui` → `data/repository` (interfaces) → 
 - **`data/seed`** — `DatabaseSeeder`, idempotent first-launch data: default categories in every build, demo account + ₹450 transaction in debug only.
 - **`data/sms`** — bank SMS capture. `CanaraSmsParser` (pure Kotlin, JVM-tested) → `SmsImporter` (maps to a `Transaction`, one app account per `Canara Bank ••<last digits>`, and back-fills from the inbox) → `SmsReceiver` (manifest `BroadcastReceiver` for live SMS). The receiver gets its dependencies through a Hilt `@EntryPoint`, not `@AndroidEntryPoint`: with the Hilt Gradle plugin an `@AndroidEntryPoint` receiver must call `super.onReceive()`, which Kotlin rejects because it's abstract.
 - **`data/backup`** — Google Drive backup. `DriveAuthorizer` (Play services `AuthorizationClient`, scope `drive.file` only) → `BackupManager` (orchestrates) → `DriveClient` (five Drive v3 REST calls over `HttpURLConnection`, no Google API client lib) + `LocalDatabaseBackup` (snapshot/validate/replace). `BackupFiles` holds the pure, JVM-tested rules (naming, pruning, multipart body). `AutoBackupWorker` is a daily WorkManager job using a Hilt `@EntryPoint` (no hilt-work). Settings/last-result live in `BackupPreferences` (SharedPreferences).
+- **`data/reminders`** — `RepaymentReminderWorker`, a daily WorkManager job (first run at the next 9:00, `KEEP`, scheduled from `ExpenseTrackerApp.onCreate`) that posts "X owes you ₹N" notifications. Tapping one opens `MainActivity` with `EXTRA_PERSON_ID`, and `AppScaffold(openPersonId)` navigates to that person.
 - **`di`** — `DatabaseModule` (Room + DAO providers), `RepositoryModule` (`@Binds` interface → implementation).
 - **`ui`** — `theme/`, `navigation/`, `components/`, `screens/<screen>/`. `components/` holds:
   - `TransactionRow` (category avatar, long-press)
@@ -75,10 +76,12 @@ Dependencies point strictly inward: `ui` → `data/repository` (interfaces) → 
   - `AnimatedMoney` (count-up text)
   - `MonthSelector` and `SelectedMonth`, a `@Singleton` holding the month being viewed so Home and Transactions stay in sync
 
-  Three bottom tabs: Home, Transactions, Settings. ViewModels expose immutable state via `StateFlow`; Composables take state as parameters. Screens:
+  Four bottom tabs: Home, Transactions, People, Settings. ViewModels expose immutable state via `StateFlow`; Composables take state as parameters. Screens:
   - **Home:** month switcher, spent/received/net for the month, current bank balance, "N to review" banner, 5 most recent.
   - **Transactions:** month switcher, month in/out totals, filters All / Money out / Money in / To review, grouped by day. Long-press starts multi-select (tap toggles, Select all, Delete with confirmation; Back exits). Selection is cleared on month or filter change and is always intersected with the visible rows, so Delete can't hit hidden ones.
   - **Edit:** add/edit/delete. Route `transaction/edit?id=&review=` (`id=-1` means new). In review mode it shows "Save & next" and "Skip" and steps through the month's uncategorised transactions, each replacing the previous one in the back stack.
+  - **People:** friends sorted overdue-first, total owed. **Person** (`person/{personId}`): owed hero card, open debts with editable due dates, history, Remind (WhatsApp `wa.me` link if a phone number is saved, otherwise the share sheet), Cash repaid, edit, delete.
+  - The edit form's `LendingSection` adds Split bill / Lent on debits and "Repayment from …" on credits.
   - **Settings:** SMS permission, inbox import, Drive backup.
 
 
@@ -104,6 +107,13 @@ Dependencies point strictly inward: `ui` → `data/repository` (interfaces) → 
 
 **Payee rules auto-categorise SMS.** `payee_rules` maps `payeeKey(counterparty)` (trimmed, whitespace-collapsed, upper-cased, because the bank writes "MOHAMMED IBR" and "Mohammed Ibr") to a category. `SmsImporter` applies the rule at capture time, so the transaction skips review. The edit form's "Always put X in Y" switch saves a rule (`PayeeRuleRepository.remember`, which also categorises that payee's still-uncategorised rows) or removes it. A rule matches a payee in both directions. There's no rule-management screen; the switch is the only UI.
 
+**Lending model** (`core/model/Lending.kt`, schema v6):
+- **Records.** `people`; `person_payees` (a UPI `payeeKey` mapped to a person, linked automatically when a loan or repayment is saved on an SMS transaction); `debts` (one per friend per debit transaction, kind `SPLIT` or `LOAN`, optional `dueEpochDay`); `repayments` (from a credit transaction, or cash with a null `transactionId`). Debts and repayments cascade-delete with their transaction or person.
+- **Settling.** Repayments aren't tied to specific debts. `summarize()` settles them oldest-first, which decides which due dates are still open.
+- **Totals.** Every spent/received figure goes through `ownTotals()`, which subtracts what friends owe on a split (`observeOwedPerTransaction`) and leaves out excluded categories. Loans and repayments are put in the built-in **Lending** category (excluded from totals, seeded by the v6 migration and the seeder), so they never sit in review.
+- **Split maths.** `equalShareMinor` floors each friend's share, so leftover paise stay with the user.
+- **Reminders.** `shouldRemind` fires on the due date and then every 3 days while overdue. It's stateless, so nothing records what was already sent.
+
 **"Needs review" means `categoryId == null`** (`Transaction.needsReview`), whatever the source. The review queue (`nextNeedingReview`) is scoped to one month and walks forward in date order, so a skipped transaction isn't served again in the same pass.
 
 **Current balance = the bank's own number**, taken from the most recent transaction on that account that carried one (`observeLatestBalances`). It isn't computed by summing transactions, because the app has no opening balance and misses non-SMS movements, so a computed figure would drift. It's shown with an "as of" time.
@@ -118,7 +128,7 @@ Dependencies point strictly inward: `ui` → `data/repository` (interfaces) → 
 
 **The UI never imports Room.** Screens and ViewModels depend only on the repository interfaces. This is the entire mechanism by which cloud sync can be added later — a new implementation plus a changed `@Binds` in `di/RepositoryModule.kt`, with no screen touched. Adding a Room import to `ui/` defeats it.
 
-**No `fallbackToDestructiveMigration`.** Losing real expense history to a schema change is unacceptable. Write proper migrations. `exportSchema = true` and `app/schemas/` is committed so migrations are diffable rather than guesswork. Current schema is **v5** (`ExpenseDatabase.VERSION`). 1→2 (`source`, `externalId`) is a plain `@AutoMigration`; 2→3 (`counterparty`, `balanceAfterMinor`) is an `@AutoMigration` with an `AutoMigrationSpec` that moves SMS payees out of `note`; 3→4 adds the `ignored_external_ids` table (plain `@AutoMigration`); 4→5 adds `categories.excludeFromTotals` + `payee_rules`, with a spec that inserts "Self transfer". Purely additive changes can keep using `AutoMigration` (new NOT NULL columns need a `@ColumnInfo(defaultValue = ...)`); renames/drops need an `AutoMigrationSpec` or a manual `Migration`. Bump `version` and add the migration in `ExpenseDatabase` for every entity change.
+**No `fallbackToDestructiveMigration`.** Losing real expense history to a schema change is unacceptable. Write proper migrations. `exportSchema = true` and `app/schemas/` is committed so migrations are diffable rather than guesswork. Current schema is **v6** (`ExpenseDatabase.VERSION`). 1→2 (`source`, `externalId`) is a plain `@AutoMigration`; 2→3 (`counterparty`, `balanceAfterMinor`) is an `@AutoMigration` with an `AutoMigrationSpec` that moves SMS payees out of `note`; 3→4 adds the `ignored_external_ids` table (plain `@AutoMigration`); 4→5 adds `categories.excludeFromTotals` + `payee_rules`, with a spec that inserts "Self transfer"; 5→6 adds the lending tables, with a spec that inserts "Lending". Purely additive changes can keep using `AutoMigration` (new NOT NULL columns need a `@ColumnInfo(defaultValue = ...)`); renames/drops need an `AutoMigrationSpec` or a manual `Migration`. Bump `version` and add the migration in `ExpenseDatabase` for every entity change.
 
 **Dates** are stored as `occurredAtEpochMillis` (`Long`) and converted to `java.time.Instant` in the mappers — there are no Room `TypeConverter`s, by choice. `minSdk = 26` means `java.time` is available natively without desugaring.
 
@@ -167,3 +177,4 @@ The repo owner is building this to learn Android development, and is cost-consci
 14. Home "Current balance" equals the Bal figure in the newest Canara SMS.
 15. Transactions: long-press a row, tap two more, Delete → confirm; all three disappear and the month totals drop. Delete an SMS one, run Import past SMS again; it must not come back.
 16. Mark a transfer to your own account as Self transfer: the month's Spent/Received drop by that amount. Turn on "Always put … in Self transfer" for that payee; the next SMS from them arrives categorised and isn't in To review.
+17. Lending: on a debit, Split bill with 2 friends and a due date of today → Home Spent counts only your share and "Owed to you" appears. On a credit from one of them, "Repayment from …" → their balance drops and Received is unchanged. Force the reminder with `adb shell cmd jobscheduler run -f com.mdibrahim.expensetracker.debug <jobId>` → "X owes you ₹N" notification → tap opens their page → Remind opens WhatsApp.

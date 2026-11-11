@@ -4,7 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.mdibrahim.expensetracker.core.model.Transaction
 import com.mdibrahim.expensetracker.core.model.TransactionDirection
-import com.mdibrahim.expensetracker.core.model.countsInTotals
+import com.mdibrahim.expensetracker.core.model.ownTotals
+import com.mdibrahim.expensetracker.data.repository.LendingRepository
 import com.mdibrahim.expensetracker.data.repository.AccountRepository
 import com.mdibrahim.expensetracker.data.repository.CategoryRepository
 import com.mdibrahim.expensetracker.data.repository.TransactionRepository
@@ -43,13 +44,12 @@ enum class TransactionFilter(val label: String) {
     }
 }
 
-data class DayGroup(val date: LocalDate, val items: List<TransactionListItem>) {
-    /** Money out on this day (of the rows shown). */
-    val spentMinor: Long
-        get() = items
-            .filter { it.transaction.direction == TransactionDirection.DEBIT && it.category?.excludeFromTotals != true }
-            .sumOf { it.transaction.amountMinor }
-}
+data class DayGroup(
+    val date: LocalDate,
+    val items: List<TransactionListItem>,
+    /** The user's own money out on this day (of the rows shown). */
+    val spentMinor: Long,
+)
 
 data class TransactionsUiState(
     val isLoading: Boolean = true,
@@ -72,6 +72,7 @@ class TransactionsViewModel @Inject constructor(
     private val transactionRepository: TransactionRepository,
     accountRepository: AccountRepository,
     categoryRepository: CategoryRepository,
+    lendingRepository: LendingRepository,
     private val selectedMonth: SelectedMonth,
 ) : ViewModel() {
 
@@ -87,25 +88,27 @@ class TransactionsViewModel @Inject constructor(
     val uiState: StateFlow<TransactionsUiState> = combine(
         monthTransactions,
         accountRepository.observeAccounts(),
-        categoryRepository.observeCategories(),
+        combine(categoryRepository.observeCategories(), lendingRepository.observeOwedPerTransaction(), ::Pair),
         filter,
         selection,
-    ) { (month, transactions), accounts, categories, activeFilter, selected ->
+    ) { (month, transactions), accounts, (categories, owedPerTransaction), activeFilter, selected ->
         val zone = ZoneId.systemDefault()
         val visible = transactions.filter(activeFilter::matches)
         val excluded = categories.filter { it.excludeFromTotals }.map { it.id }.toSet()
-        val counted = transactions.filter { it.countsInTotals(excluded) }
+        val totals = ownTotals(transactions, excluded, owedPerTransaction)
         TransactionsUiState(
             isLoading = false,
             month = month,
             filter = activeFilter,
-            spentMinor = counted.filter { it.direction == TransactionDirection.DEBIT }.sumOf { it.amountMinor },
-            receivedMinor = counted.filter { it.direction == TransactionDirection.CREDIT }.sumOf { it.amountMinor },
+            spentMinor = totals.spentMinor,
+            receivedMinor = totals.receivedMinor,
             toReviewCount = transactions.count { it.needsReview },
             // Repository already orders newest first, and groupBy keeps that order.
             days = buildListItems(visible, accounts, categories)
                 .groupBy { it.transaction.occurredAt.atZone(zone).toLocalDate() }
-                .map { (date, items) -> DayGroup(date, items) },
+                .map { (date, items) ->
+                    DayGroup(date, items, ownTotals(items.map { it.transaction }, excluded, owedPerTransaction).spentMinor)
+                },
             // Only what's on screen can be selected; drop ids that scrolled out of the
             // list (deleted elsewhere, filtered away) so Delete never hits hidden rows.
             selectedIds = selected intersect visible.map { it.id }.toSet(),

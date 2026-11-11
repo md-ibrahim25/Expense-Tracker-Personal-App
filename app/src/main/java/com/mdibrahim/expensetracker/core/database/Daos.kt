@@ -175,3 +175,80 @@ interface PayeeRuleDao {
     @Query("DELETE FROM payee_rules WHERE payeeKey = :payeeKey")
     suspend fun delete(payeeKey: String)
 }
+
+@Dao
+interface LendingDao {
+    @Query("SELECT * FROM people ORDER BY name COLLATE NOCASE")
+    fun observePeople(): Flow<List<PersonEntity>>
+
+    @Query("SELECT * FROM debts")
+    fun observeDebts(): Flow<List<DebtEntity>>
+
+    @Query("SELECT * FROM repayments")
+    fun observeRepayments(): Flow<List<RepaymentEntity>>
+
+    @Query("SELECT * FROM people")
+    suspend fun people(): List<PersonEntity>
+
+    @Query("SELECT * FROM debts")
+    suspend fun debts(): List<DebtEntity>
+
+    @Query("SELECT * FROM repayments")
+    suspend fun repayments(): List<RepaymentEntity>
+
+    @Insert
+    suspend fun insertPerson(person: PersonEntity): Long
+
+    @Update
+    suspend fun updatePerson(person: PersonEntity)
+
+    @Query("DELETE FROM people WHERE id = :personId")
+    suspend fun deletePerson(personId: Long)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun linkPayee(link: PersonPayeeEntity)
+
+    @Query("SELECT personId FROM person_payees WHERE payeeKey = :payeeKey")
+    suspend fun personForPayee(payeeKey: String): Long?
+
+    @Query("SELECT * FROM debts WHERE transactionId = :transactionId")
+    suspend fun debtsFor(transactionId: Long): List<DebtEntity>
+
+    @Query("SELECT * FROM repayments WHERE transactionId = :transactionId LIMIT 1")
+    suspend fun repaymentFor(transactionId: Long): RepaymentEntity?
+
+    @Query("DELETE FROM debts WHERE transactionId = :transactionId")
+    suspend fun deleteDebtsFor(transactionId: Long)
+
+    @Insert
+    suspend fun insertDebts(debts: List<DebtEntity>)
+
+    @Query("DELETE FROM repayments WHERE transactionId = :transactionId")
+    suspend fun deleteRepaymentFor(transactionId: Long)
+
+    @Insert
+    suspend fun insertRepayment(repayment: RepaymentEntity): Long
+
+    @Query("DELETE FROM repayments WHERE id = :repaymentId")
+    suspend fun deleteRepayment(repaymentId: Long)
+
+    @Query("UPDATE debts SET dueEpochDay = :dueEpochDay WHERE id = :debtId")
+    suspend fun setDue(debtId: Long, dueEpochDay: Long?)
+
+    /** A transaction's debts are always replaced as a set, from the edit form. */
+    @Transaction
+    suspend fun replaceDebts(transactionId: Long, debts: List<DebtEntity>) {
+        deleteDebtsFor(transactionId)
+        if (debts.isNotEmpty()) insertDebts(debts)
+    }
+
+    @Transaction
+    suspend fun replaceRepayment(transactionId: Long, repayment: RepaymentEntity?) {
+        deleteRepaymentFor(transactionId)
+        if (repayment != null) insertRepayment(repayment)
+    }
+
+    /** Per transaction, how much of it others owe -- subtracted from the user's spending. */
+    @Query("SELECT transactionId, SUM(amountMinor) AS amountMinor FROM debts GROUP BY transactionId")
+    fun observeOwedPerTransaction(): Flow<List<TransactionAmount>>
+}

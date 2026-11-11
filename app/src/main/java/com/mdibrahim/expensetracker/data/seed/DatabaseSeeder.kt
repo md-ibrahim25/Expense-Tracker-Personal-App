@@ -81,9 +81,16 @@ class DatabaseSeeder @Inject constructor(
             "Other" to 0xFF757575.toInt(),
             // Must match ExpenseDatabase.V5AddSelfTransfer (which adds it to older installs).
             "Self transfer" to 0xFF546E7A.toInt(),
+            // Must match ExpenseDatabase.V6AddLending.
+            "Lending" to 0xFF6D4C41.toInt(),
         )
 
-        /** Money moving between the user's own accounts isn't spending or income. */
-        val EXCLUDED_FROM_TOTALS = setOf("Self transfer")
+        /**
+         * Not spending or income: transfers between own accounts, and money lent out
+         * or paid back (tracked as debts instead).
+         */
+        val EXCLUDED_FROM_TOTALS = setOf("Self transfer", "Lending")
+
+        const val LENDING = "Lending"
     }
 }

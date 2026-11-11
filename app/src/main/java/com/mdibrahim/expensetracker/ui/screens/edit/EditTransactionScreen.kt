@@ -244,6 +244,8 @@ fun EditTransactionScreen(
                 }
             }
 
+            LendingSection(state, viewModel)
+
             OutlinedTextField(
                 value = state.note,
                 onValueChange = viewModel::onNoteChange,

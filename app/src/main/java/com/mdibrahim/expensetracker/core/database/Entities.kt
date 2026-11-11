@@ -117,3 +117,68 @@ data class BalanceRow(
     val balanceAfterMinor: Long,
     val occurredAtEpochMillis: Long,
 )
+
+// ---- Lending (schema v6) ----
+
+@Entity(tableName = "people")
+data class PersonEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    val phone: String? = null,
+)
+
+/** Links a UPI name seen in SMS ([com.mdibrahim.expensetracker.core.model.payeeKey]) to a person. */
+@Entity(
+    tableName = "person_payees",
+    foreignKeys = [
+        ForeignKey(entity = PersonEntity::class, parentColumns = ["id"], childColumns = ["personId"], onDelete = ForeignKey.CASCADE),
+    ],
+    indices = [Index("personId")],
+)
+data class PersonPayeeEntity(
+    @PrimaryKey val payeeKey: String,
+    val personId: Long,
+)
+
+@Entity(
+    tableName = "debts",
+    foreignKeys = [
+        ForeignKey(entity = PersonEntity::class, parentColumns = ["id"], childColumns = ["personId"], onDelete = ForeignKey.CASCADE),
+        // A debt is derived from the user's payment; deleting the payment removes it.
+        ForeignKey(entity = TransactionEntity::class, parentColumns = ["id"], childColumns = ["transactionId"], onDelete = ForeignKey.CASCADE),
+    ],
+    indices = [Index("personId"), Index("transactionId")],
+)
+data class DebtEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val personId: Long,
+    val transactionId: Long,
+    /** Paise, always positive. */
+    val amountMinor: Long,
+    /** DebtKind by name. */
+    val kind: String,
+    val description: String?,
+    val occurredAtEpochMillis: Long,
+    /** LocalDate.toEpochDay(); null = no expected date. */
+    val dueEpochDay: Long?,
+)
+
+@Entity(
+    tableName = "repayments",
+    foreignKeys = [
+        ForeignKey(entity = PersonEntity::class, parentColumns = ["id"], childColumns = ["personId"], onDelete = ForeignKey.CASCADE),
+        ForeignKey(entity = TransactionEntity::class, parentColumns = ["id"], childColumns = ["transactionId"], onDelete = ForeignKey.CASCADE),
+    ],
+    indices = [Index("personId"), Index("transactionId")],
+)
+data class RepaymentEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val personId: Long,
+    /** Null = repaid in cash, recorded by hand. */
+    val transactionId: Long?,
+    val amountMinor: Long,
+    val occurredAtEpochMillis: Long,
+)
+
+/** Projection: total owed by others on one transaction. */
+data class TransactionAmount(val transactionId: Long, val amountMinor: Long)
