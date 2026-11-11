@@ -16,6 +16,13 @@ data class ParsedSms(
 /**
  * Parses Canara Bank debit/credit SMS. Pure Kotlin so it is unit-testable on the JVM.
  *
+ * Formats seen in real messages (see CanaraSmsParserTest for one of each):
+ * - "Acct XXXX1234 Dr. INR 75.00 on .. to NAME; UPI: ..; Bal INR .."      (UPI debit)
+ * - "Acct XXXX1234 credited with INR 100.00 on .. from NAME; UPI:..; Bal"  (UPI credit)
+ * - "Rs.5.00 paid thru A/C XX1234 on .. to NAME, UPI Ref .."               (older UPI debit)
+ * - "An amount of INR 260.00 has been DEBITED to your account XXXX1234 .." (generic alert)
+ * - "A/c XXXX1234 linked to card debited Rs.INR 10,000.00 .. ATM txn .."   (ATM withdrawal)
+ *
  * Deliberately conservative: anything that doesn't clearly describe money that has
  * already moved (OTPs, payment requests, "will be debited" mandate reminders,
  * balance enquiries) returns null. A missed SMS can be entered by hand; a phantom
@@ -26,24 +33,36 @@ object CanaraSmsParser {
     /** Canara's DLT sender IDs look like "AD-CANBNK", "VM-CANBNK-S". */
     private val SENDER = Regex("CANBNK|CANARA", RegexOption.IGNORE_CASE)
 
+    /** Body signature; newer messages end "-CanaraBank" with no space. */
+    private val SIGNATURE = Regex("""Canara\s?Bank""", RegexOption.IGNORE_CASE)
+
     private val AMOUNT = Regex("""(?:INR|Rs\.?|₹)\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)""", RegexOption.IGNORE_CASE)
 
-    private val DEBIT = Regex("""\b(debited|paid|withdrawn|sent|spent|purchase)\b""", RegexOption.IGNORE_CASE)
-    private val CREDIT = Regex("""\b(credited|received|deposited|refunded)\b""", RegexOption.IGNORE_CASE)
+    // "Dr."/"Cr." only count right before an amount, so a payee called "Dr Rao" can't flip it.
+    private val DEBIT = Regex("""\b(debited|paid|withdrawn|sent|spent|purchase)\b|\bDr\.?\s+(?:INR|Rs)""", RegexOption.IGNORE_CASE)
+    private val CREDIT = Regex("""\b(credited|received|deposited|refunded)\b|\bCr\.?\s+(?:INR|Rs)""", RegexOption.IGNORE_CASE)
 
     /** Messages about money that hasn't moved (or isn't a transaction at all). */
     private val REJECT = Regex(
-        """\bOTP\b|\bwill be (debited|credited)\b|\brequested\b|\brequest\b|\bdue\b|\bfailed\b|\bdeclined\b""",
+        """\bOTP\b|\bwill be (debited|credited)\b|\brequested\b|\brequest\b|\bdue\b|\bfailed\b|\bdeclined\b""" +
+            // Autopay reminders ("Mandate .. debit of Rs.99 is scheduled") and cardless-cash
+            // codes ("initiated") come before the money moves; the real debit has its own SMS.
+            """|\bmandate\b|\bscheduled\b|\binitiated\b""",
         RegexOption.IGNORE_CASE,
     )
 
     private val ACCOUNT = Regex("""\b(?:a/c|account|acct)\s*(?:no\.?\s*)?[Xx*]*\s*([0-9]{3,6})\b""", RegexOption.IGNORE_CASE)
 
-    private val TOWARDS = Regex("""\btowards\s+(.+?)(?:\.\s|\.$|\s+Total\b|\s+Avl|$)""", RegexOption.IGNORE_CASE)
-    private val TO_OR_FROM = Regex("""\b(?:to|from)\s+(?!your\b|a/c\b|account\b)([A-Za-z0-9][A-Za-z0-9 .&@_/-]{1,40}?)(?:,|\s+UPI\b|\s+on\b|\.\s|$)""", RegexOption.IGNORE_CASE)
+    /**
+     * Counterparty in UPI messages: "to NAME; UPI", "from NAME; UPI", "to NAME, UPI Ref".
+     * Anchoring on the UPI marker is what keeps phrases like "SMS BLOCKUPI to 99.." or
+     * "Dial 1930 to report cyber fraud" from being mistaken for a payee.
+     */
+    private val UPI_PARTY = Regex("""\b(?:to|from)\s+([^,;]+?)\s*[,;]\s*UPI\b""", RegexOption.IGNORE_CASE)
+    private val ATM = Regex("""\bATM txn\b""", RegexOption.IGNORE_CASE)
 
     fun isFromCanara(sender: String?, body: String): Boolean =
-        (sender != null && SENDER.containsMatchIn(sender)) || body.contains("Canara Bank", ignoreCase = true)
+        (sender != null && SENDER.containsMatchIn(sender)) || SIGNATURE.containsMatchIn(body)
 
     fun parse(body: String): ParsedSms? {
         if (REJECT.containsMatchIn(body)) return null
@@ -68,14 +87,15 @@ object CanaraSmsParser {
             amountMinor = amountMinor,
             direction = direction,
             accountSuffix = ACCOUNT.find(body)?.groupValues?.get(1),
-            description = describe(body),
+            description = describe(body, direction),
         )
     }
 
-    private fun describe(body: String): String? {
-        val raw = TOWARDS.find(body)?.groupValues?.get(1)
-            ?: TO_OR_FROM.find(body)?.groupValues?.get(1)
-            ?: return null
-        return raw.trim().trimEnd('.', ',').take(60).ifBlank { null }
+    /** Null when the SMS names no counterparty (e.g. the generic "An amount of .." alert). */
+    private fun describe(body: String, direction: TransactionDirection): String? {
+        if (direction == TransactionDirection.DEBIT && ATM.containsMatchIn(body)) return "ATM withdrawal"
+        val party = UPI_PARTY.find(body)?.groupValues?.get(1) ?: return null
+        // Banks pad names with double spaces ("SHIV RAJ  SINGH").
+        return party.replace(Regex("""\s+"""), " ").trim().take(60).ifBlank { null }
     }
 }

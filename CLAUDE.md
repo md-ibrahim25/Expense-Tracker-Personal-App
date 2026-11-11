@@ -10,11 +10,13 @@ The project is split into two phases. **Phase 1 (done): foundations** — a runn
 
 ## Current status
 
-Builds, `testDebugUnitTest` passes (16 `MoneyTest` + 8 `CanaraSmsParserTest`), and `lintDebug` has 0 errors. Build failures are regressions.
+Builds, `testDebugUnitTest` passes (16 `MoneyTest` + 9 `CanaraSmsParserTest`), and `lintDebug` has 0 errors. Build failures are regressions.
 
 **Nothing has been run on a phone yet** — all on-device steps in the verification list at the bottom are unverified.
 
-The Canara SMS parser was written from Canara's known wording, **not from real messages**. Its test bodies are invented. Real (account-masked) SMS samples from the owner's phone are the outstanding input; add them to `CanaraSmsParserTest` and fix the parser against them.
+The Canara SMS parser is built against **real messages from the owner's phone** (5 transaction formats + 3 non-transaction ones, listed in the `CanaraSmsParser` KDoc). Test bodies keep the real wording but have names, UPI refs and account digits replaced — **never commit real SMS text**, since the repo is on GitHub. When a real SMS parses wrongly, add it (anonymised) to the test first.
+
+Known gap: in June 2026, Canara sometimes sent **two SMS for one UPI payment** (a "paid thru … to NAME" message plus a generic "An amount of INR … DEBITED" alert, same amount, same day). They have different bodies, so the hash dedupe doesn't catch them, and the payment is recorded twice. Later messages ("Acct … Dr. INR …") are one SMS per payment. Not handled automatically yet; the owner deletes the duplicate by hand.
 
 Toolchain: AGP 8.13.2 / Kotlin 2.2.10 / KSP `2.2.10-2.0.2` / Gradle 8.14.3, `compileSdk`/`targetSdk` 36.
 
