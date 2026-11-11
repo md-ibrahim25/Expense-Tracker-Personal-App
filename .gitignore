@@ -1,0 +1,60 @@
+## Android / Gradle
+*.iml
+.gradle/
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+local.properties
+
+## Android Studio / IntelliJ
+.idea/*
+!.idea/codeStyles/
+!.idea/inspectionProfiles/
+.idea/caches/
+.idea/libraries/
+.idea/modules.xml
+.idea/workspace.xml
+.idea/navEditor.xml
+.idea/assetWizardSettings.xml
+.idea/deploymentTargetSelector.xml
+.idea/deploymentTargetDropDown.xml
+.idea/misc.xml
+.idea/gradle.xml
+.idea/compiler.xml
+.idea/kotlinc.xml
+.idea/androidTestResultsUserPreferences.xml
+.idea/appInsightsSettings.xml
+.idea/migrations.xml
+
+## Signing / secrets -- never commit these
+*.jks
+*.keystore
+keystore.properties
+signing.properties
+google-services.json
+
+## Build outputs
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+output.json
+release/
+
+## Native / NDK
+obj/
+.navigation/
+
+## macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+## Logs & temp
+*.log
+*.hprof
+*.swp
+*~

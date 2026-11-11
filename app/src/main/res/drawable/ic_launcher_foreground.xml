@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Rupee glyph inside the adaptive-icon safe zone. The 108dp canvas has an outer
+  18dp margin reserved for masking, so artwork stays within the middle 72dp.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <group android:translateX="30" android:translateY="28">
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M4,2 h40 a4,4 0 0 1 0,8 h-40 a4,4 0 0 1 0,-8 z" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M4,16 h40 a4,4 0 0 1 0,8 h-40 a4,4 0 0 1 0,-8 z" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M10,6 h12 a16,16 0 0 1 0,32 h-14 l26,24 h-12 l-26,-26 v-6 h26 a8,8 0 0 0 0,-16 h-12 z" />
+    </group>
+</vector>
