@@ -39,8 +39,7 @@ class SmsImporter @Inject constructor(
         val accountName = parsed.accountSuffix?.let { "Canara Bank ••$it" } ?: "Canara Bank"
         val accountId = accounts.getOrCreate(accountName, AccountType.BANK)
 
-        return transactions.addIfNew(
-            Transaction(
+        val transaction = Transaction(
                 amountMinor = parsed.amountMinor,
                 direction = parsed.direction,
                 occurredAt = Instant.ofEpochMilli(receivedAtMillis),
@@ -50,8 +49,12 @@ class SmsImporter @Inject constructor(
                 balanceAfterMinor = parsed.balanceMinor,
                 source = TransactionSource.SMS,
                 externalId = smsId(body),
-            ),
         )
+        val added = transactions.addIfNew(transaction)
+        // Seen before: backfill details an older version of the parser didn't record
+        // (e.g. balance, added in schema v3).
+        if (!added) transactions.fillMissingCapturedDetails(transaction)
+        return added
     }
 
     /** Scans the SMS inbox (needs READ_SMS) and imports every Canara transaction. */

@@ -4,6 +4,5 @@
 
     <string name="nav_home">Home</string>
     <string name="nav_transactions">Transactions</string>
-    <string name="nav_reports">Reports</string>
     <string name="nav_settings">Settings</string>
 </resources>

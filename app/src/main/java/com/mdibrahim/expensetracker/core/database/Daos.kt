@@ -139,6 +139,20 @@ interface TransactionDao {
         return deleteByIds(ids)
     }
 
+    /**
+     * Fills only fields that are still empty -- never overwrites -- on an already
+     * captured row. Lets a re-import backfill rows captured by an older parser.
+     */
+    @Query(
+        """
+        UPDATE transactions
+        SET balanceAfterMinor = COALESCE(balanceAfterMinor, :balanceAfterMinor),
+            counterparty = COALESCE(counterparty, :counterparty)
+        WHERE externalId = :externalId
+        """,
+    )
+    suspend fun fillMissingCapturedDetails(externalId: String, counterparty: String?, balanceAfterMinor: Long?)
+
     @Query("SELECT EXISTS(SELECT 1 FROM ignored_external_ids WHERE externalId = :externalId)")
     suspend fun isIgnored(externalId: String): Boolean
 }

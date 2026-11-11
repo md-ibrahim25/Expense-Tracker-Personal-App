@@ -69,18 +69,26 @@ Dependencies point strictly inward: `ui` → `data/repository` (interfaces) → 
 - **`data/sms`** — bank SMS capture. `CanaraSmsParser` (pure Kotlin, JVM-tested) → `SmsImporter` (maps to a `Transaction`, one app account per `Canara Bank ••<last digits>`, and back-fills from the inbox) → `SmsReceiver` (manifest `BroadcastReceiver` for live SMS). The receiver gets its dependencies through a Hilt `@EntryPoint`, not `@AndroidEntryPoint`: with the Hilt Gradle plugin an `@AndroidEntryPoint` receiver must call `super.onReceive()`, which Kotlin rejects because it's abstract.
 - **`data/backup`** — Google Drive backup. `DriveAuthorizer` (Play services `AuthorizationClient`, scope `drive.file` only) → `BackupManager` (orchestrates) → `DriveClient` (five Drive v3 REST calls over `HttpURLConnection`, no Google API client lib) + `LocalDatabaseBackup` (snapshot/validate/replace). `BackupFiles` holds the pure, JVM-tested rules (naming, pruning, multipart body). `AutoBackupWorker` is a daily WorkManager job using a Hilt `@EntryPoint` (no hilt-work). Settings/last-result live in `BackupPreferences` (SharedPreferences).
 - **`di`** — `DatabaseModule` (Room + DAO providers), `RepositoryModule` (`@Binds` interface → implementation).
-- **`ui`** — `theme/`, `navigation/`, `components/` (shared `TransactionRow`, `MonthSelector`, and `SelectedMonth`, a `@Singleton` holding the month being viewed so Home and Transactions stay in sync), `screens/<screen>/`. ViewModels expose immutable state via `StateFlow`; Composables take state as parameters. Screens:
+- **`ui`** — `theme/`, `navigation/`, `components/`, `screens/<screen>/`. `components/` holds:
+  - `TransactionRow` (category avatar, long-press)
+  - `CategoryVisuals` (`iconKey` → icon, `CategoryAvatar`)
+  - `AnimatedMoney` (count-up text)
+  - `MonthSelector` and `SelectedMonth`, a `@Singleton` holding the month being viewed so Home and Transactions stay in sync
+
+  Three bottom tabs: Home, Transactions, Settings. ViewModels expose immutable state via `StateFlow`; Composables take state as parameters. Screens:
   - **Home:** month switcher, spent/received/net for the month, current bank balance, "N to review" banner, 5 most recent.
   - **Transactions:** month switcher, month in/out totals, filters All / Money out / Money in / To review, grouped by day. Long-press starts multi-select (tap toggles, Select all, Delete with confirmation; Back exits). Selection is cleared on month or filter change and is always intersected with the visible rows, so Delete can't hit hidden ones.
   - **Edit:** add/edit/delete. Route `transaction/edit?id=&review=` (`id=-1` means new). In review mode it shows "Save & next" and "Skip" and steps through the month's uncategorised transactions, each replacing the previous one in the back stack.
   - **Settings:** SMS permission, inbox import, Drive backup.
-  - **Reports:** still a placeholder.
+
 
 ### Invariants — do not violate these
 
 **Money is always a `Long` count of minor units (paise).** Never `Double`, never `Float`. Binary floating point cannot represent decimal fractions exactly, so totals drift and stop reconciling, and there is no way to repair the stored history afterwards. All display goes through `formatMoney()` and all user input through `rupeesToMinor()` in `core/util/Money.kt`, so rounding happens in exactly one place. `rupeesToMinor()` returns `null` on invalid input rather than `0` — a silent zero would record a free transaction.
 
 **`TransactionEntity.amountMinor` is unsigned in meaning**; direction is carried by the `direction` column (`DEBIT`/`CREDIT`), not by the sign. `rupeesToMinor()` accepts negatives, so every entry point must reject `<= 0` itself (the edit ViewModel and the SMS parser both do).
+
+**Re-importing backfills, never overwrites.** When an SMS is already recorded, `SmsImporter` calls `fillMissingCapturedDetails`, which only sets `counterparty`/`balanceAfterMinor` where they're NULL (`COALESCE`). This is how rows captured before v3 get their balance: run Import past SMS again.
 
 **Captured transactions are deduplicated by `externalId`** (unique index; SHA-256 of the SMS body, `sms:` prefix). The same SMS can arrive live and again via inbox import; `addIfNew` makes the second a no-op. Editing must preserve `source`/`externalId` (`copy()` on the loaded transaction), or the edited SMS would be re-imported as a duplicate. Multipart SMS bodies are joined before hashing so they match the inbox's stored body.
 
@@ -95,6 +103,10 @@ Dependencies point strictly inward: `ui` → `data/repository` (interfaces) → 
 **"Needs review" means `categoryId == null`** (`Transaction.needsReview`), whatever the source. The review queue (`nextNeedingReview`) is scoped to one month and walks forward in date order, so a skipped transaction isn't served again in the same pass.
 
 **Current balance = the bank's own number**, taken from the most recent transaction on that account that carried one (`observeLatestBalances`). It isn't computed by summing transactions, because the app has no opening balance and misses non-SMS movements, so a computed figure would drift. It's shown with an "as of" time.
+
+**Animated money still lands exactly.** `AnimatedMoney` animates a 0..1 progress value and interpolates in `Long` paise; its final frame shows the target `Long` itself. Never animate money through a `Float` (e.g. `animateFloatAsState` on the amount): a `Float` can't represent amounts above about ₹1.67 lakh in paise exactly.
+
+**UI style:** Material 3 with dynamic colour. Corners come from the custom `Shapes` in `Theme.kt` (`extraLarge` 28dp for cards). The Home hero card is a primary→tertiary gradient with `onPrimary` text: the two are the same tone in M3, so that pairing stays readable under any dynamic scheme. There's no red/green on the hero card, so the +/- signs carry direction there. Use `LocalConfiguration.current.locales[0]`, not `Locale.getDefault()`, inside composables (lint `NonObservableLocale` is an error).
 
 **SMS parsing is conservative.** Anything not clearly describing money that already moved (OTP, "will be debited", requests, failures) returns `null`. A missed SMS can be typed in by hand; a phantom transaction silently corrupts totals.
 
@@ -127,13 +139,15 @@ The repo owner is building this to learn Android development, and is cost-consci
 
 **Owner's decisions so far:** bank is **Canara Bank only** (SMS debit/credit). Cloud sync is a **Google Drive backup file** (built). The owner reports the Google Cloud Console setup is done, but it hasn't been confirmed by a successful backup on the phone yet. What it requires: Drive API enabled, OAuth consent screen with the `drive.file` scope, and an **Android** OAuth client per build — package `com.mdibrahim.expensetracker.debug` + the debug keystore SHA-1 (`keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android`), plus a separate client for the release package once a release keystore exists. No client ID goes in the code. Error code 10 (`DEVELOPER_ERROR`) in the app means the package/SHA-1 doesn't match a client. If the consent screen stays in "Testing", Google may expire the grant after 7 days and auto-backup will stop until the owner taps Back up now; `drive.file` is a non-sensitive scope, so publishing it "In production" needs no verification.
 
-**Not started:** UPI app notification capture, budgets and overspend alerts, charts and reports (the Reports tab is still `ui/screens/placeholder/`), statement CSV/PDF import, receipt OCR, recurring-transaction detection, app lock/biometrics, home-screen widgets, export to Excel/Sheets. Also not built: managing accounts and categories in the app (they only come from the seeder and SMS import).
+**Owner decided against:** a Reports tab or charts screen (removed, along with `ui/screens/placeholder/`). Don't re-add one unless asked.
+
+**Not started:** UPI app notification capture, budgets and overspend alerts, statement CSV/PDF import, receipt OCR, recurring-transaction detection, app lock/biometrics, home-screen widgets, export to Excel/Sheets. Also not built: managing accounts and categories in the app (they only come from the seeder and SMS import).
 
 ## On-device verification
 
 1. `./gradlew :app:testDebugUnitTest` — passes.
 2. `./gradlew :app:installDebug` — app appears in the launcher.
-3. All four bottom-nav tabs switch without crashing.
+3. All three bottom-nav tabs switch without crashing. (Home and Transactions have been screenshot-checked in dark mode on the owner's phone.)
 4. The seeded ₹450 transaction is visible on Home; `adb shell am force-stop ...` then reopen, and it is still there. This proves Room writes to disk. An existing v1 install must also open without crashing, which proves the 1→2 migration.
 5. Toggle system dark mode — the app follows with no unreadable text.
 6. Add a transaction with +, edit it, delete it; the Home totals follow.

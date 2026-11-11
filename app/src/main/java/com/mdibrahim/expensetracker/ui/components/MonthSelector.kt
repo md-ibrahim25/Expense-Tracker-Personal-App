@@ -1,6 +1,16 @@
 package com.mdibrahim.expensetracker.ui.components
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
@@ -56,14 +66,32 @@ fun MonthSelector(
     modifier: Modifier = Modifier,
 ) {
     Row(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(onClick = onPrevious) {
             Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Previous month")
         }
-        Text(month.format(MONTH_FORMAT), style = MaterialTheme.typography.titleMedium)
+        // The label slides in the direction of travel: older months come from the left.
+        AnimatedContent(
+            targetState = month,
+            transitionSpec = {
+                val forward = targetState > initialState
+                (slideInHorizontally { if (forward) it else -it } + fadeIn()) togetherWith
+                    (slideOutHorizontally { if (forward) -it else it } + fadeOut())
+            },
+            label = "month",
+        ) { shown ->
+            Text(
+                shown.format(MONTH_FORMAT),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
         IconButton(onClick = onNext, enabled = month < YearMonth.now()) {
             Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Next month")
         }

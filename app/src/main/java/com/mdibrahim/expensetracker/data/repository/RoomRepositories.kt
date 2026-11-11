@@ -74,6 +74,11 @@ class RoomTransactionRepository @Inject constructor(
         if (transaction.externalId?.let { dao.isIgnored(it) } == true) return false
         return dao.insertIfNew(transaction.toEntity()) != -1L
     }
+    override suspend fun fillMissingCapturedDetails(transaction: Transaction) {
+        val id = transaction.externalId ?: return
+        dao.fillMissingCapturedDetails(id, transaction.counterparty, transaction.balanceAfterMinor)
+    }
+
     override suspend fun update(transaction: Transaction) = dao.update(transaction.toEntity())
     override suspend fun delete(transaction: Transaction) {
         dao.deleteRemembering(listOf(transaction.id))

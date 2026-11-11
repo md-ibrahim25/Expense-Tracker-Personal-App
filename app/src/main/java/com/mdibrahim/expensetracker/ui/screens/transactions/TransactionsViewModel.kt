@@ -42,7 +42,12 @@ enum class TransactionFilter(val label: String) {
     }
 }
 
-data class DayGroup(val date: LocalDate, val items: List<TransactionListItem>)
+data class DayGroup(val date: LocalDate, val items: List<TransactionListItem>) {
+    /** Money out on this day (of the rows shown). */
+    val spentMinor: Long
+        get() = items.filter { it.transaction.direction == TransactionDirection.DEBIT }
+            .sumOf { it.transaction.amountMinor }
+}
 
 data class TransactionsUiState(
     val isLoading: Boolean = true,

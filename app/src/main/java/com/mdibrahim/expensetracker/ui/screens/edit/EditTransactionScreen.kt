@@ -1,6 +1,24 @@
 package com.mdibrahim.expensetracker.ui.screens.edit
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.filled.AccountBalance
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.EditNote
+import androidx.compose.material.icons.filled.NorthEast
+import androidx.compose.material.icons.filled.Sms
+import androidx.compose.material.icons.filled.SouthWest
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.ui.draw.clip
+import com.mdibrahim.expensetracker.ui.components.categoryIcon
+import com.mdibrahim.expensetracker.ui.components.color
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,8 +27,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -55,7 +71,7 @@ import java.time.format.DateTimeFormatter
 
 private val DATE_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("EEE, d MMM yyyy")
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun EditTransactionScreen(
     onDone: () -> Unit,
@@ -112,26 +128,40 @@ fun EditTransactionScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             if (state.source == TransactionSource.SMS) {
-                Column {
-                    state.counterparty?.let {
-                        val prefix = if (state.direction == TransactionDirection.DEBIT) "Paid to" else "Received from"
-                        Text("$prefix $it", style = MaterialTheme.typography.titleMedium)
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(MaterialTheme.shapes.large)
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                        .padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Filled.Sms, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(12.dp))
+                    Column {
+                        state.counterparty?.let {
+                            val prefix = if (state.direction == TransactionDirection.DEBIT) "Paid to" else "Received from"
+                            Text("$prefix $it", style = MaterialTheme.typography.titleMedium)
+                        }
+                        Text(
+                            text = "From a bank SMS",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
-                    Text(
-                        text = "From a bank SMS",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
                 }
             }
 
             OutlinedTextField(
                 value = state.amountText,
                 onValueChange = viewModel::onAmountChange,
-                label = { Text("Amount (₹)") },
+                label = { Text("Amount") },
+                prefix = { Text("₹ ", style = MaterialTheme.typography.headlineMedium) },
+                textStyle = MaterialTheme.typography.headlineMedium,
                 isError = state.amountError != null,
                 supportingText = state.amountError?.let { { Text(it) } },
                 singleLine = true,
+                shape = MaterialTheme.shapes.large,
                 keyboardOptions = KeyboardOptions(
                     keyboardType = KeyboardType.Decimal,
                     imeAction = ImeAction.Next,
@@ -139,26 +169,39 @@ fun EditTransactionScreen(
                 modifier = Modifier.fillMaxWidth(),
             )
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                SegmentedButton(
                     selected = state.direction == TransactionDirection.DEBIT,
                     onClick = { viewModel.onDirectionChange(TransactionDirection.DEBIT) },
-                    label = { Text("− Money out") },
-                )
-                FilterChip(
+                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                    icon = { Icon(Icons.Filled.NorthEast, contentDescription = null, Modifier.size(18.dp)) },
+                ) { Text("Money out") }
+                SegmentedButton(
                     selected = state.direction == TransactionDirection.CREDIT,
                     onClick = { viewModel.onDirectionChange(TransactionDirection.CREDIT) },
-                    label = { Text("+ Money in") },
-                )
+                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                    icon = { Icon(Icons.Filled.SouthWest, contentDescription = null, Modifier.size(18.dp)) },
+                ) { Text("Money in") }
             }
 
             Section("Category") {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(state.categories, key = { it.id }) { category ->
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    state.categories.forEach { category ->
                         FilterChip(
                             selected = state.categoryId == category.id,
                             onClick = { viewModel.onCategoryChange(category.id) },
                             label = { Text(category.name) },
+                            leadingIcon = {
+                                Icon(
+                                    categoryIcon(category.iconKey),
+                                    contentDescription = null,
+                                    tint = category.color(),
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            },
                         )
                     }
                 }
@@ -169,13 +212,17 @@ fun EditTransactionScreen(
                 onValueChange = viewModel::onNoteChange,
                 label = { Text("What was it for?") },
                 placeholder = { Text("e.g. groceries for the week") },
+                leadingIcon = { Icon(Icons.Filled.EditNote, contentDescription = null) },
+                shape = MaterialTheme.shapes.large,
                 modifier = Modifier.fillMaxWidth(),
             )
 
             Section("Date") {
-                OutlinedButton(onClick = { showDatePicker = true }) {
-                    Text(state.dateTime.toLocalDate().format(DATE_FORMAT))
-                }
+                AssistChip(
+                    onClick = { showDatePicker = true },
+                    label = { Text(state.dateTime.toLocalDate().format(DATE_FORMAT)) },
+                    leadingIcon = { Icon(Icons.Filled.CalendarMonth, contentDescription = null, Modifier.size(18.dp)) },
+                )
             }
 
             Section("Account") {
@@ -186,12 +233,15 @@ fun EditTransactionScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 } else {
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(state.accounts, key = { it.id }) { account ->
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        state.accounts.forEach { account ->
                             FilterChip(
                                 selected = state.accountId == account.id,
                                 onClick = { viewModel.onAccountChange(account.id) },
                                 label = { Text(account.name) },
+                                leadingIcon = {
+                                    Icon(Icons.Filled.AccountBalance, contentDescription = null, Modifier.size(18.dp))
+                                },
                             )
                         }
                     }

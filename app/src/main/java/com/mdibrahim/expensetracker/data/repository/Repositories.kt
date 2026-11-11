@@ -52,6 +52,12 @@ interface TransactionRepository {
      * Returns true if a row was added.
      */
     suspend fun addIfNew(transaction: Transaction): Boolean
+
+    /**
+     * For an already-captured transaction (same externalId): fill counterparty and
+     * balance if they're missing. Never overwrites, so the user's edits are safe.
+     */
+    suspend fun fillMissingCapturedDetails(transaction: Transaction)
     suspend fun update(transaction: Transaction)
     suspend fun delete(transaction: Transaction)
 

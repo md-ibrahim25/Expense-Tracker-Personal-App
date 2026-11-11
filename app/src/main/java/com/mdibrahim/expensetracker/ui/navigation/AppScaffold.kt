@@ -20,7 +20,6 @@ import androidx.navigation.navArgument
 import com.mdibrahim.expensetracker.ui.screens.edit.EditTransactionScreen
 import com.mdibrahim.expensetracker.ui.screens.edit.EditTransactionViewModel
 import com.mdibrahim.expensetracker.ui.screens.home.HomeScreen
-import com.mdibrahim.expensetracker.ui.screens.placeholder.PlaceholderScreen
 import com.mdibrahim.expensetracker.ui.screens.settings.SettingsScreen
 import com.mdibrahim.expensetracker.ui.screens.transactions.TransactionsScreen
 
@@ -31,6 +30,18 @@ private const val ARG_REVIEW = EditTransactionViewModel.ARG_REVIEW
 private const val EDIT_ROUTE = "transaction/edit?$ARG_ID={$ARG_ID}&$ARG_REVIEW={$ARG_REVIEW}"
 
 private fun editRoute(id: Long, review: Boolean) = "transaction/edit?$ARG_ID=$id&$ARG_REVIEW=$review"
+
+private fun NavHostController.openTab(destination: TopLevelDestination) =
+    navigate(destination.route) {
+        // Single instance per tab, and returning to a tab restores where you left
+        // off rather than resetting.
+        popUpTo(TopLevelDestination.HOME.route) {
+            saveState = true
+            inclusive = false
+        }
+        launchSingleTop = true
+        restoreState = true
+    }
 
 private fun NavHostController.openEditor(id: Long = EditTransactionViewModel.NEW_ID, review: Boolean = false) =
     navigate(editRoute(id, review))
@@ -51,18 +62,7 @@ fun AppScaffold() {
                         NavigationBarItem(
                             selected = currentRoute == destination.route,
                             onClick = {
-                                if (currentRoute != destination.route) {
-                                    navController.navigate(destination.route) {
-                                        // Single instance per tab, and returning to a tab
-                                        // restores where you left off rather than resetting.
-                                        popUpTo(TopLevelDestination.HOME.route) {
-                                            saveState = true
-                                            inclusive = false
-                                        }
-                                        launchSingleTop = true
-                                        restoreState = true
-                                    }
-                                }
+                                if (currentRoute != destination.route) navController.openTab(destination)
                             },
                             icon = { Icon(destination.icon, contentDescription = label) },
                             label = { Text(label) },
@@ -82,6 +82,7 @@ fun AppScaffold() {
                     onAddTransaction = { navController.openEditor() },
                     onOpenTransaction = { navController.openEditor(it) },
                     onStartReview = { navController.openEditor(it, review = true) },
+                    onSeeAll = { navController.openTab(TopLevelDestination.TRANSACTIONS) },
                 )
             }
             composable(TopLevelDestination.TRANSACTIONS.route) {
@@ -89,9 +90,6 @@ fun AppScaffold() {
                     onAddTransaction = { navController.openEditor() },
                     onOpenTransaction = { navController.openEditor(it) },
                 )
-            }
-            composable(TopLevelDestination.REPORTS.route) {
-                PlaceholderScreen(title = "Reports")
             }
             composable(TopLevelDestination.SETTINGS.route) {
                 SettingsScreen()

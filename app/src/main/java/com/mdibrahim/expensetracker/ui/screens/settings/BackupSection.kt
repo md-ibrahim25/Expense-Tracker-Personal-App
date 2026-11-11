@@ -5,7 +5,18 @@ import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -61,12 +72,12 @@ fun BackupSection(viewModel: BackupViewModel = hiltViewModel()) {
         if (state.restartRequired) restartApp(context)
     }
 
-    Card(modifier = Modifier.fillMaxWidth()) {
+    SettingsCard {
         Column(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("Google Drive backup", style = MaterialTheme.typography.titleMedium)
+            SectionTitle(Icons.Filled.CloudUpload, "Google Drive backup")
             Text(
                 "Backups go to an \"Expense Tracker Backups\" folder in your Google Drive. " +
                     "The app can only see files it created there, nothing else in your Drive.",
@@ -164,6 +175,30 @@ fun BackupSection(viewModel: BackupViewModel = hiltViewModel()) {
             },
             dismissButton = { TextButton(onClick = { confirmRestore = null }) { Text("Cancel") } },
         )
+    }
+}
+
+/** Card used by every Settings section. */
+@Composable
+internal fun SettingsCard(content: @Composable () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.extraLarge,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+    ) { content() }
+}
+
+@Composable
+internal fun SectionTitle(icon: ImageVector, title: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            Modifier.size(40.dp).background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer)
+        }
+        Spacer(Modifier.width(12.dp))
+        Text(title, style = MaterialTheme.typography.titleMedium)
     }
 }
 

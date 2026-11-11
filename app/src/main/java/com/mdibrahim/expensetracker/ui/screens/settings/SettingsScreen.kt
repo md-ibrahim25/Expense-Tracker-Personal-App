@@ -16,7 +16,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Sms
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -69,14 +70,14 @@ fun SettingsScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Text("Settings", style = MaterialTheme.typography.headlineSmall)
+        Text("Settings", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(top = 8.dp))
 
-        Card(modifier = Modifier.fillMaxWidth()) {
+        SettingsCard {
             Column(
-                modifier = Modifier.padding(16.dp),
+                modifier = Modifier.padding(18.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text("Bank SMS capture", style = MaterialTheme.typography.titleMedium)
+                SectionTitle(Icons.Filled.Sms, "Bank SMS capture")
                 Text(
                     "Reads Canara Bank debit/credit SMS and records them automatically. " +
                         "Messages are processed on this phone only and never leave it.",
